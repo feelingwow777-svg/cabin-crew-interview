@@ -2949,12 +2949,25 @@ input, textarea{ font:inherit; }
         '<b>녹음과 목소리 분석만</b> 사용할 수 없습니다.',
         '질문 뽑기 · 답변했다/못했다 표기 · 통계 · 모범 답안 · 답변 시간 타이머는 <b>모두 정상 동작</b>합니다.',
         '실전 모의평가도 <b>시간 관리 연습</b>으로 그대로 쓸 수 있습니다.',
-        '녹음까지 쓰시려면 이 파일을 <b>일반 웹사이트 주소로 직접 올려서</b> 실행해야 합니다. 그때는 마이크가 정상 동작합니다.'
+        '녹음까지 쓰시려면 아래 <b>정식 주소</b>로 접속하세요. 같은 앱이고, 거기서는 마이크가 정상 동작합니다.'
       ].forEach(function (s) {
         var li = document.createElement('li');
         var span = document.createElement('span'); span.innerHTML = s;
         li.appendChild(span); ol.appendChild(li);
       });
+
+      // 정식 주소를 바로 복사할 수 있게 붙여 준다
+      var slot = document.createElement('li');
+      slot.className = 'steps__slot';
+      var addr = document.createElement('button');
+      addr.className = 'btn btn--ghost';
+      addr.style.width = '100%';
+      addr.style.fontFamily = 'var(--t-mono)';
+      addr.style.fontSize = '12px';
+      addr.textContent = APP_URL.replace('https://', '') + '  (탭하여 복사)';
+      addr.addEventListener('click', function () { copyText(APP_URL, '주소를 복사했어요 — 새 탭에 붙여넣으세요'); });
+      slot.appendChild(addr);
+      ol.appendChild(slot);
       $('micDot').className = 'micstate__dot is-denied';
       $('micStateTxt').textContent = '구조적 제약 — 설정으로 풀 수 없음';
       $('micRetry').hidden = true;
