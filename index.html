@@ -755,6 +755,21 @@ input, textarea{ font:inherit; }
 .fb__t{ display:block; font-size:13px; font-weight:700; margin-bottom:4px; }
 .fb__d{ display:block; font-size:12.5px; line-height:1.65; color:var(--fog); }
 
+/* ---------- 녹음 직후 분석 결과 ---------- */
+.ansq{
+  margin:0 0 10px;
+  font-size:15px; font-weight:700; line-height:1.5; color:var(--paper);
+}
+.ansscript{
+  padding:12px 13px; margin-bottom:4px;
+  border:1px solid var(--line); border-radius:var(--r-md);
+  background:var(--ink-2);
+  font-size:13px; line-height:1.75; color:var(--fog);
+  font-style:italic;
+  max-height:9em; overflow-y:auto;
+}
+.ansscript.is-empty{ font-style:normal; color:var(--fog-2); }
+
 /* ---------- 관리자 모드 ---------- */
 .lockbox{ display:flex; flex-direction:column; align-items:center; gap:12px; padding:26px 0 16px; }
 .lockbox__icon{ width:46px; height:46px; color:var(--blue); }
@@ -1615,6 +1630,36 @@ input, textarea{ font:inherit; }
         </button>
       </div>
       <button class="btn btn--go" id="exDone" style="width:100%">마치기</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== 녹음 직후 분석 결과 ========== -->
+<div class="sheet" id="sheetAnswer" hidden role="dialog" aria-modal="true" aria-label="답변 분석 결과">
+  <div class="sheet__panel" style="--sig:var(--green)">
+    <div class="sheet__grip"></div>
+    <div class="sheet__head">
+      <h2>답변 분석</h2>
+      <button class="iconbtn" data-close="sheetAnswer" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <p class="ansq" id="ansQ"></p>
+      <div class="ansscript" id="ansScript"></div>
+
+      <h3 class="subhead">답변 내용 <em>· 무엇을 말했는가</em></h3>
+      <ul class="fblist" id="ansContent"></ul>
+
+      <h3 class="subhead" id="ansVoiceHead">목소리 <em>· 어떻게 말했는가</em></h3>
+      <ul class="fblist" id="ansVoice"></ul>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" id="ansToRecs" style="width:100%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        녹음함에서 다시 듣기
+      </button>
     </div>
   </div>
 </div>
@@ -3445,7 +3490,7 @@ input, textarea{ font:inherit; }
   }
 
   /* ---------- 녹음 조작 ---------- */
-  var rec = null, recCount = 0;
+  var rec = null, recCount = 0, recStt = null, recItem = null;
 
   function fmtDate(ms) {
     var d = new Date(ms);
@@ -3461,12 +3506,24 @@ input, textarea{ font:inherit; }
   function startRec() {
     if (!canRecord) { openMicSheet(); return; }   // 왜 안 되는지, 어떻게 푸는지 보여준다
     askPersist().then(function (ok) { persisted = ok; });
+
+    // 어떤 질문에 대한 답변인지 붙잡아 둔다 (녹음 중 화면이 바뀔 수 있다)
+    recItem = current;
+
+    // 답변 받아쓰기 — 실패해도 녹음은 계속된다
+    recStt = null;
+    if (canTranscribe && recItem) {
+      var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
+      if (t.start()) recStt = t;
+    }
+
     rec = createRecorder();
     rec.start().then(function () {
       syncRecBtn(true);
       buzz(20);
-      toast('녹음 중 — 다시 누르면 저장됩니다');
+      toast(canTranscribe ? '녹음 중 — 다시 누르면 분석해 드려요' : '녹음 중 — 다시 누르면 저장됩니다');
     }).catch(function (e) {
+      if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
       syncRecBtn(false);
       if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
@@ -3481,25 +3538,78 @@ input, textarea{ font:inherit; }
 
   function stopRec() {
     if (!rec) return;
-    var q = current ? current.q : '', tag = current ? current.t : '';
+    var item = recItem || current;
+    var q = item ? item.q : '', tag = item ? item.t : '';
     var r = rec; rec = null;
     syncRecBtn(false);
 
-    r.stop().then(function (res) {
+    var sttP = recStt ? recStt.stop() : Promise.resolve('');
+    recStt = null;
+
+    Promise.all([r.stop(), sttP]).then(function (arr) {
+      var res = arr[0], transcript = arr[1] || '';
       if (!res.blob || res.blob.size < 800) { toast('녹음이 너무 짧아요'); return; }
+
       var meta = {
         id: 'r' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         at: Date.now(), date: fmtDate(Date.now()),
         q: q, tag: tag,
         durationMs: res.durationMs, mime: res.mime, size: res.blob.size,
-        metrics: res.metrics
+        metrics: res.metrics, transcript: transcript
       };
       return recAdd(meta, res.blob).then(function () {
         refreshRecCount();
         buzz(14);
-        toast('녹음함에 저장했어요 · ' + fmtClock(res.durationMs / 1000));
+        showAnswerReport(item, transcript, res.metrics, res.durationMs);
       });
     }).catch(function () { toast('녹음을 저장하지 못했어요'); });
+  }
+
+  /** 녹음을 마치면 그 자리에서 내용·목소리 분석을 보여 준다 */
+  function showAnswerReport(item, transcript, metrics, durMs) {
+    $('ansQ').textContent = item ? item.q : '(질문 없음)';
+
+    var script = $('ansScript');
+    if (transcript) {
+      script.className = 'ansscript';
+      script.textContent = '“' + transcript + '”';
+    } else {
+      script.className = 'ansscript is-empty';
+      script.textContent = canTranscribe
+        ? '말소리를 받아쓰지 못했습니다. 마이크에 조금 더 가까이, 또렷하게 말해 보세요.'
+        : '이 브라우저는 답변 받아쓰기를 지원하지 않습니다. Chrome 이나 삼성 인터넷에서 열면 내용까지 분석해 드립니다.';
+    }
+
+    var paint = function (ul, list, emptyMsg) {
+      ul.innerHTML = '';
+      if (!list.length) {
+        var li0 = document.createElement('li');
+        li0.className = 'is-warn';
+        li0.innerHTML = '<span class="fb__d"></span>';
+        li0.querySelector('.fb__d').textContent = emptyMsg;
+        ul.appendChild(li0);
+        return;
+      }
+      var order = { bad: 0, warn: 1, good: 2 };
+      list.slice().sort(function (a, b) { return order[a.lv] - order[b.lv]; })
+        .slice(0, 5).forEach(function (f) {
+          var li = document.createElement('li');
+          li.className = 'is-' + f.lv;
+          li.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+          li.querySelector('.fb__t').textContent = f.t;
+          li.querySelector('.fb__d').textContent = f.d;
+          ul.appendChild(li);
+        });
+    };
+
+    var c = item ? analyzeContent(transcript, item) : null;
+    paint($('ansContent'), c ? contentFeedback(c, item) : [],
+      '분석할 만큼의 답변이 인식되지 않았습니다.');
+
+    paint($('ansVoice'), metrics ? feedbackOf(metrics, axesOf(metrics), durMs / 1000) : [],
+      '목소리를 분석할 만큼 길게 말하지 않았습니다.');
+
+    openSheet('sheetAnswer');
   }
 
   /* 브라우저가 저장 영역을 함부로 비우지 않도록 요청해 둔다.
@@ -3581,6 +3691,15 @@ input, textarea{ font:inherit; }
         if (m.tag) bits.unshift(m.tag);
         meta.textContent = bits.join('  ·  ');
 
+        var sc = null;
+        if (m.transcript) {
+          sc = document.createElement('div');
+          sc.className = 'ansscript';
+          sc.style.maxHeight = '5.5em';
+          sc.style.fontSize = '12px';
+          sc.textContent = '“' + m.transcript + '”';
+        }
+
         var row = document.createElement('div');
         row.className = 'rec__row';
 
@@ -3610,7 +3729,9 @@ input, textarea{ font:inherit; }
         });
 
         row.appendChild(audio); row.appendChild(dl); row.appendChild(del);
-        li.appendChild(q); li.appendChild(meta); li.appendChild(row);
+        li.appendChild(q); li.appendChild(meta);
+        if (sc) li.appendChild(sc);
+        li.appendChild(row);
         ul.appendChild(li);
       });
       refreshStorageBar();
@@ -4713,6 +4834,12 @@ input, textarea{ font:inherit; }
     openSheet('sheetRecs');
   });
 
+  $('ansToRecs').addEventListener('click', function () {
+    closeSheet('sheetAnswer');
+    renderRecs();
+    openSheet('sheetRecs');
+  });
+
   /* 관리자 모드 — "승무원 면접" 5연타 (2초 안에 이어서 눌러야 한다) */
   $('adminGate').addEventListener('click', function () {
     var now = Date.now();
@@ -4930,7 +5057,7 @@ input, textarea{ font:inherit; }
   });
 
   // 시트 바깥 탭으로 닫기
-  ['sheetCustom', 'sheetFav', 'sheetShare', 'sheetLog', 'sheetStats', 'sheetRecs', 'sheetMic', 'sheetAdmin'].forEach(function (id) {
+  ['sheetCustom', 'sheetFav', 'sheetShare', 'sheetLog', 'sheetStats', 'sheetRecs', 'sheetMic', 'sheetAdmin', 'sheetAnswer'].forEach(function (id) {
     $(id).addEventListener('click', function (e) { if (e.target === $(id)) closeSheet(id); });
   });
 
@@ -4985,6 +5112,7 @@ input, textarea{ font:inherit; }
     if (!$('sheetRecs').hidden)   { closeSheet('sheetRecs'); return; }
     if (!$('sheetMic').hidden)    { closeSheet('sheetMic'); return; }
     if (!$('sheetAdmin').hidden)  { adminOpen = false; closeSheet('sheetAdmin'); return; }
+    if (!$('sheetAnswer').hidden) { closeSheet('sheetAnswer'); return; }
     if (!$('exam').hidden && !exam.running) { closeExam(); return; }
     if (!stage.hidden)            { closeStage(); }
   });
