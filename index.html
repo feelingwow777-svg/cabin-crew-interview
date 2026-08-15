@@ -1559,6 +1559,15 @@ input, textarea{ font:inherit; }
         </div>
       </div>
 
+      <div class="exsrc">
+        <span class="exrow__label">분석 방식</span>
+        <div class="chips" id="exMode">
+          <button class="chip" data-mode="both" aria-pressed="true">녹음 + 받아쓰기</button>
+          <button class="chip" data-mode="stt">받아쓰기만</button>
+        </div>
+        <p class="prefs__note" id="exModeNote"></p>
+      </div>
+
       <div class="micnote" id="exMicNote"></div>
     </div>
 
@@ -3509,19 +3518,21 @@ input, textarea{ font:inherit; }
 
     // 어떤 질문에 대한 답변인지 붙잡아 둔다 (녹음 중 화면이 바뀔 수 있다)
     recItem = current;
-
-    // 답변 받아쓰기 — 실패해도 녹음은 계속된다
     recStt = null;
-    if (canTranscribe && recItem) {
-      var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
-      if (t.start()) recStt = t;
-    }
 
     rec = createRecorder();
     rec.start().then(function () {
       syncRecBtn(true);
       buzz(20);
       toast(canTranscribe ? '녹음 중 — 다시 누르면 분석해 드려요' : '녹음 중 — 다시 누르면 저장됩니다');
+
+      // 녹음이 자리를 잡은 뒤에 받아쓰기를 붙인다.
+      // 반대 순서면 녹음이 마이크를 가져가 인식이 소리를 못 받는다.
+      setTimeout(function () {
+        if (!rec || !canTranscribe || !recItem) return;
+        var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
+        if (t.start()) recStt = t;
+      }, 400);
     }).catch(function (e) {
       if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
@@ -3543,6 +3554,7 @@ input, textarea{ font:inherit; }
     var r = rec; rec = null;
     syncRecBtn(false);
 
+    var sttDiag = recStt ? recStt.diag() : null;
     var sttP = recStt ? recStt.stop() : Promise.resolve('');
     recStt = null;
 
@@ -3560,13 +3572,13 @@ input, textarea{ font:inherit; }
       return recAdd(meta, res.blob).then(function () {
         refreshRecCount();
         buzz(14);
-        showAnswerReport(item, transcript, res.metrics, res.durationMs);
+        showAnswerReport(item, transcript, res.metrics, res.durationMs, sttDiag);
       });
     }).catch(function () { toast('녹음을 저장하지 못했어요'); });
   }
 
   /** 녹음을 마치면 그 자리에서 내용·목소리 분석을 보여 준다 */
-  function showAnswerReport(item, transcript, metrics, durMs) {
+  function showAnswerReport(item, transcript, metrics, durMs, sttDiag) {
     $('ansQ').textContent = item ? item.q : '(질문 없음)';
 
     var script = $('ansScript');
@@ -3575,9 +3587,7 @@ input, textarea{ font:inherit; }
       script.textContent = '“' + transcript + '”';
     } else {
       script.className = 'ansscript is-empty';
-      script.textContent = canTranscribe
-        ? '말소리를 받아쓰지 못했습니다. 마이크에 조금 더 가까이, 또렷하게 말해 보세요.'
-        : '이 브라우저는 답변 받아쓰기를 지원하지 않습니다. Chrome 이나 삼성 인터넷에서 열면 내용까지 분석해 드립니다.';
+      script.textContent = sttReason(sttDiag);
     }
 
     var paint = function (ul, list, emptyMsg) {
@@ -3744,7 +3754,7 @@ input, textarea{ font:inherit; }
      실전 모의평가
      ============================================================ */
   var exam = {
-    n: 3, per: 80, scope: 'all',
+    n: 3, per: 80, scope: 'all', mode: 'both',
     list: [], idx: 0, results: [],
     rec: null, stt: null, tId: null, endAt: 0, running: false
   };
@@ -3864,12 +3874,19 @@ input, textarea{ font:inherit; }
     document.querySelectorAll('#exScope .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(c.dataset.scope === exam.scope));
     });
+    document.querySelectorAll('#exMode .chip').forEach(function (c) {
+      c.setAttribute('aria-pressed', String(c.dataset.mode === exam.mode));
+    });
+    $('exModeNote').textContent = exam.mode === 'stt'
+      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 가장 확실하지만, 녹음 파일과 목소리 분석은 남지 않습니다.'
+      : '답변을 녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나올 수 있으며, 그럴 때 「받아쓰기만」으로 바꾸면 해결됩니다.';
     $('exTotal').textContent = examTotalLabel();
 
     var note = $('exMicNote');
     if (canRecord) {
       note.className = 'micnote micnote--ok';
-      note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 요청합니다. 허용하면 답변을 녹음하고, ' +
+      note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 한 번 요청합니다. ' +
+        '팝업에서 <strong>“이번만 허용”이 아니라 “허용”(항상)</strong>을 고르면 다시 묻지 않습니다. 허용하면 답변을 녹음하고, ' +
         (canTranscribe
           ? '<strong>말한 내용까지 받아써서</strong> 질문에 맞게 답했는지 분석해 드립니다. '
           : '목소리만 분석합니다(이 브라우저는 받아쓰기 미지원). ') +
@@ -3901,8 +3918,12 @@ input, textarea{ font:inherit; }
 
   function closeExam() {
     stopExamTimer();
+    if (exam.stt) { exam.stt.stop(); exam.stt = null; }
     if (exam.rec && exam.rec.isActive()) { exam.rec.stop(); exam.rec = null; }
+    releaseMic();               // 평가가 끝나야 마이크를 놓는다
     exam.running = false;
+    finishing = false;
+    $('exNext').disabled = false;
     $('exam').hidden = true;
     if (stage.hidden) document.body.classList.remove('is-locked');
     render();
@@ -3926,8 +3947,20 @@ input, textarea{ font:inherit; }
     exam.idx = 0;
     exam.results = [];
     exam.running = true;
+    finishing = false;
     showPane('exRun');
-    nextExamQuestion();
+
+    // 마이크를 미리 한 번만 확보한다. 실패해도 시간 연습으로 진행한다.
+    if (canRecord && exam.mode !== 'stt') {
+      acquireMic().then(function () { nextExamQuestion(); })
+        .catch(function (e) {
+          if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) openMicSheet();
+          else toast('마이크를 열지 못해 시간 연습으로만 진행합니다');
+          nextExamQuestion();
+        });
+    } else {
+      nextExamQuestion();
+    }
   }
 
   function nextExamQuestion() {
@@ -3941,20 +3974,32 @@ input, textarea{ font:inherit; }
     $('exMeter').hidden = true;
     $('exLevel').style.width = '0%';
 
-    // 답변 받아쓰기 — 영어 문항은 영어로 인식한다
     exam.stt = null;
-    if (canTranscribe) {
-      var t = createTranscriber(item.t === '영어' ? 'en-US' : 'ko-KR');
-      if (t.start()) exam.stt = t;
-    }
+    exam.rec = null;
 
-    // 녹음 시도 — 실패해도 시간 연습은 계속된다
-    if (canRecord) {
-      exam.rec = createRecorder();
+    // 받아쓰기는 녹음이 자리를 잡은 뒤에 붙인다.
+    // 반대 순서로 하면 녹음이 마이크를 가져가면서 인식이 소리를 못 받는다.
+    var startStt = function () {
+      if (!canTranscribe) return;
+      var t = createTranscriber(item.t === '영어' ? 'en-US' : 'ko-KR');
+      if (t.start(function (live) { $('exMeterCap').textContent = live ? '인식 중' : '녹음 중'; })) exam.stt = t;
+    };
+
+    if (exam.mode === 'stt') {
+      // 받아쓰기 우선 — 녹음을 하지 않아 인식이 마이크를 독점한다
+      $('exMeter').hidden = false;
+      $('exMeterCap').textContent = '받아쓰는 중';
+      $('exLevel').style.width = '100%';
+      startStt();
+    } else if (canRecord) {
+      // 평가 시작 때 확보한 스트림을 문항마다 재사용한다 → 권한을 한 번만 묻는다
+      exam.rec = createRecorder(sharedStream);
       exam.rec.start(function (rms) {
         $('exLevel').style.width = Math.min(100, Math.round(rms * 900)) + '%';
       }).then(function () {
         $('exMeter').hidden = false;
+        $('exMeterCap').textContent = '녹음 중';
+        setTimeout(startStt, 400);
       }).catch(function (e) {
         exam.rec = null;
         $('exMeter').hidden = true;
@@ -3965,8 +4010,6 @@ input, textarea{ font:inherit; }
           toast('마이크를 열지 못해 시간 연습으로만 진행합니다');
         }
       });
-    } else {
-      exam.rec = null;
     }
 
     runExamTimer();
@@ -3989,14 +4032,24 @@ input, textarea{ font:inherit; }
     })();
   }
 
+  var finishing = false;
+
   function finishQuestion() {
+    // 시간 만료와 버튼 클릭이 겹치면 같은 문항이 두 번 마감될 수 있다
+    if (finishing || !exam.running) return;
+    finishing = true;
+
     stopExamTimer();
+    $('exNext').disabled = true;
+    markFinishing();
     var item = exam.list[exam.idx];
     var used = exam.per - Math.max(0, (exam.endAt - Date.now()) / 1000);
 
+    var sttDiag = exam.stt ? exam.stt.diag() : null;
+
     var done = function (metrics, blobInfo, transcript) {
       var content = analyzeContent(transcript, item);
-      exam.results.push({ item: item, metrics: metrics, usedSec: used, content: content });
+      exam.results.push({ item: item, metrics: metrics, usedSec: used, content: content, sttDiag: sttDiag });
 
       if (blobInfo) {
         var meta = {
@@ -4009,6 +4062,8 @@ input, textarea{ font:inherit; }
         recAdd(meta, blobInfo.blob).then(refreshRecCount).catch(function () {});
       }
       exam.idx++;
+      finishing = false;
+      $('exNext').disabled = false;
       if (exam.idx < exam.list.length) nextExamQuestion();
       else showReport();
     };
@@ -4028,9 +4083,15 @@ input, textarea{ font:inherit; }
     }).catch(function () { done(null, null, ''); });
   }
 
+  /* 진행 중 화면에서 답변을 마칠 때 잠깐 대기가 생기는 것을 알려 준다 */
+  function markFinishing() {
+    $('exNextLabel').textContent = '정리 중…';
+  }
+
   function showReport() {
     exam.running = false;
     stopExamTimer();
+    releaseMic();               // 모든 문항이 끝났으니 마이크를 놓는다
     $('exGauge').classList.add('is-off');
     $('exStep').textContent = '결과';
     showPane('exReport');
@@ -4121,14 +4182,30 @@ input, textarea{ font:inherit; }
     var withText = exam.results.filter(function (r) { return r.content; });
 
     if (withText.length === 0) {
+      // 마지막 진단 정보로 '왜' 실패했는지 구체적으로 알려 준다
+      var lastDiag = null;
+      for (var di = exam.results.length - 1; di >= 0; di--) {
+        if (exam.results[di].sttDiag) { lastDiag = exam.results[di].sttDiag; break; }
+      }
       var li0 = document.createElement('li');
       li0.className = 'is-warn';
       li0.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-      li0.querySelector('.fb__t').textContent = canTranscribe ? '답변을 받아쓰지 못했습니다' : '이 브라우저는 답변 받아쓰기를 지원하지 않습니다';
-      li0.querySelector('.fb__d').textContent = canTranscribe
-        ? '말소리가 인식되지 않았습니다. 마이크에 조금 더 가까이, 또렷하게 말해 보세요.'
-        : 'Chrome 이나 삼성 인터넷에서 열면 답변 내용까지 분석해 드립니다.';
+      li0.querySelector('.fb__t').textContent = '답변을 받아쓰지 못했습니다';
+      li0.querySelector('.fb__d').textContent = sttReason(lastDiag);
       cul.appendChild(li0);
+
+      // 녹음과 함께 돌리다 실패한 경우, 해결책을 바로 제시한다
+      if (exam.mode !== 'stt' && canTranscribe) {
+        var li1 = document.createElement('li');
+        li1.className = 'is-bad';
+        li1.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+        li1.querySelector('.fb__t').textContent = '해결 방법 — 「받아쓰기만」으로 바꿔 보세요';
+        li1.querySelector('.fb__d').textContent =
+          '이 기기는 녹음과 음성인식을 동시에 쓰지 못하는 것으로 보입니다. ' +
+          '「다시 하기」 → 설정 화면의 분석 방식에서 「받아쓰기만」을 고르면 답변 내용 분석이 정상 동작합니다. ' +
+          '대신 그 모드에서는 녹음 파일이 남지 않습니다.';
+        cul.appendChild(li1);
+      }
     } else {
       withText.forEach(function (r, i) {
         var head = document.createElement('li');
@@ -4415,8 +4492,31 @@ input, textarea{ font:inherit; }
     return sr / best;
   }
 
-  function createRecorder() {
-    var stream = null, mr = null, chunks = [];
+  /* ---------- 마이크 스트림 공유 ----------
+     문항마다 마이크를 여닫으면 브라우저가 그때마다 권한을 되묻는다.
+     한 번 열어 두고 세션 내내 재사용한 뒤, 끝날 때만 닫는다. */
+  var sharedStream = null;
+
+  function acquireMic() {
+    if (sharedStream && sharedStream.getTracks().some(function (t) { return t.readyState === 'live'; })) {
+      return Promise.resolve(sharedStream);
+    }
+    sharedStream = null;
+    return navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }
+    }).then(function (s) { sharedStream = s; return s; });
+  }
+
+  function releaseMic() {
+    if (sharedStream) {
+      sharedStream.getTracks().forEach(function (t) { t.stop(); });
+      sharedStream = null;
+    }
+  }
+
+  /** @param {MediaStream} [existing] 공유 스트림. 주면 녹음이 끝나도 닫지 않는다. */
+  function createRecorder(existing) {
+    var stream = null, owned = false, mr = null, chunks = [];
     var ctx = null, an = null, buf = null, rafId = null;
     var frames = [];      // { t, rms, f0 }
     var startAt = 0, frameNo = 0;
@@ -4438,9 +4538,9 @@ input, textarea{ font:inherit; }
     return {
       start: function (levelCb) {
         onLevel = levelCb || null;
-        return navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }
-        }).then(function (s) {
+        var src = existing ? Promise.resolve(existing)
+                           : acquireMic().then(function (s) { owned = true; return s; });
+        return src.then(function (s) {
           stream = s;
           chunks = []; frames = []; frameNo = 0;
 
@@ -4470,7 +4570,8 @@ input, textarea{ font:inherit; }
           function finish() {
             var type = (mr && mr.mimeType) || 'audio/webm';
             var blob = new Blob(chunks, { type: type });
-            if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+            // 공유 스트림은 여기서 닫지 않는다 (다음 문항에서 그대로 쓴다)
+            if (owned) releaseMic();
             if (ctx) { try { ctx.close(); } catch (e) {} }
             stream = null; ctx = null; an = null;
             resolve({ blob: blob, mime: type, durationMs: dur, metrics: analyze(frames, dur) });
@@ -4575,31 +4676,66 @@ input, textarea{ font:inherit; }
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var canTranscribe = !!SR;
 
+  /* 되살려도 소용없는 오류. 여기 걸리면 재시도를 멈춘다. */
+  var STT_FATAL = ['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'];
+
   function createTranscriber(lang) {
-    var rec = null, text = '', alive = false;
+    var rec = null, text = '', interim = '', alive = false, restarts = 0;
+    // 어디까지 진행됐는지 남겨 둔다. 실패했을 때 이유를 사용자에게 알려주기 위해서다.
+    var st = { started: false, audio: false, speech: false, results: 0, error: '', fatal: false };
+    var onLive = null;
 
     return {
-      start: function () {
-        if (!SR) return false;
+      start: function (liveCb) {
+        if (!SR) { st.error = 'unsupported'; return false; }
+        onLive = liveCb || null;
         try {
           rec = new SR();
           rec.lang = lang || 'ko-KR';
           rec.continuous = true;
           rec.interimResults = true;
           rec.maxAlternatives = 1;
-          text = ''; alive = true;
+          text = ''; interim = ''; alive = true; restarts = 0;
+
+          rec.onstart       = function () { st.started = true; };
+          rec.onaudiostart  = function () { st.audio = true; };
+          rec.onspeechstart = function () { st.speech = true; };
 
           rec.onresult = function (e) {
+            interim = '';
             for (var i = e.resultIndex; i < e.results.length; i++) {
-              if (e.results[i].isFinal) text += e.results[i][0].transcript + ' ';
+              var alt = e.results[i][0];
+              if (e.results[i].isFinal) { text += alt.transcript + ' '; st.results++; }
+              else interim += alt.transcript;
             }
+            if (onLive) onLive((text + interim).trim());
           };
-          // 침묵이 길면 브라우저가 임의로 끊는다. 아직 답변 중이면 되살린다.
-          rec.onend = function () { if (alive) { try { rec.start(); } catch (e) {} } };
-          rec.onerror = function () {};
+
+          rec.onerror = function (e) {
+            st.error = (e && e.error) || 'unknown';
+            if (STT_FATAL.indexOf(st.error) !== -1) { st.fatal = true; alive = false; }
+          };
+
+          // 침묵이 길면 브라우저가 임의로 끊는다. 답변 중이면 되살리되,
+          // 곧바로 다시 끊기는 상황에서 무한히 반복하지 않도록 횟수를 제한한다.
+          rec.onend = function () {
+            if (!alive || st.fatal || restarts >= 20) return;
+            restarts++;
+            try { rec.start(); } catch (e) {}
+          };
+
           rec.start();
           return true;
-        } catch (e) { rec = null; alive = false; return false; }
+        } catch (e) {
+          st.error = 'start-failed';
+          rec = null; alive = false;
+          return false;
+        }
+      },
+
+      diag: function () {
+        return { started: st.started, audio: st.audio, speech: st.speech,
+                 results: st.results, error: st.error, fatal: st.fatal, restarts: restarts };
       },
 
       stop: function () {
@@ -4607,13 +4743,40 @@ input, textarea{ font:inherit; }
         return new Promise(function (resolve) {
           if (!rec) { resolve(''); return; }
           var done = false;
-          var finish = function () { if (!done) { done = true; resolve(text.trim()); } };
+          var finish = function () {
+            if (done) return;
+            done = true;
+            // 확정되지 않은 마지막 조각도 살려 쓴다
+            resolve((text + ' ' + interim).trim());
+          };
           rec.onend = finish;
           try { rec.stop(); } catch (e) { finish(); }
-          setTimeout(finish, 1400);   // onend 가 오지 않는 브라우저 대비
+          setTimeout(finish, 1500);   // onend 가 오지 않는 브라우저 대비
         });
       }
     };
+  }
+
+  /** 진단 정보 → 사람이 읽을 수 있는 실패 원인 */
+  function sttReason(d) {
+    if (!d) return canTranscribe
+      ? '받아쓰기가 시작되지 않았습니다.'
+      : '이 브라우저는 답변 받아쓰기를 지원하지 않습니다. Chrome 이나 삼성 인터넷에서 열어 보세요.';
+    if (d.error === 'not-allowed' || d.error === 'service-not-allowed')
+      return '음성인식 권한이 거부됐습니다. 마이크를 허용한 뒤 다시 시도해 주세요.';
+    if (d.error === 'audio-capture')
+      return '음성인식이 마이크를 잡지 못했습니다. 녹음과 동시에 쓰지 못하는 브라우저일 수 있습니다.';
+    if (d.error === 'network')
+      return '음성인식 서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.';
+    if (d.error === 'language-not-supported')
+      return '이 브라우저가 한국어 음성인식을 지원하지 않습니다.';
+    if (!d.started)
+      return '음성인식이 시작되지 못했습니다' + (d.error ? ' (' + d.error + ')' : '') + '.';
+    if (!d.audio)
+      return '음성인식이 마이크 소리를 전혀 받지 못했습니다. 녹음 기능과 충돌했을 가능성이 큽니다.';
+    if (!d.speech)
+      return '마이크는 열렸지만 말소리로 인식된 구간이 없습니다. 조금 더 크고 또렷하게 말해 보세요.';
+    return '말소리는 감지됐지만 문장으로 변환되지 않았습니다' + (d.error ? ' (' + d.error + ')' : '') + '.';
   }
 
   /* 요소별 판별 패턴 */
@@ -4821,6 +4984,10 @@ input, textarea{ font:inherit; }
   $('exScope').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
     exam.scope = c.dataset.scope; syncExamSetup(); buzz(8);
+  });
+  $('exMode').addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    exam.mode = c.dataset.mode; syncExamSetup(); buzz(8);
   });
 
   $('btnTip').addEventListener('click', toggleTip);
