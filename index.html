@@ -105,6 +105,9 @@ input, textarea{ font:inherit; }
   text-wrap:balance;
 }
 .board__title em{ font-style:normal; color:var(--amber); }
+/* 관리자 진입점 — 눌리는 느낌만 주고 존재는 드러내지 않는다 */
+#adminGate{ cursor:default; -webkit-user-select:none; user-select:none; }
+#adminGate:active{ opacity:.72; }
 
 .board__sub{
   margin:8px 0 0;
@@ -752,6 +755,53 @@ input, textarea{ font:inherit; }
 .fb__t{ display:block; font-size:13px; font-weight:700; margin-bottom:4px; }
 .fb__d{ display:block; font-size:12.5px; line-height:1.65; color:var(--fog); }
 
+/* ---------- 관리자 모드 ---------- */
+.lockbox{ display:flex; flex-direction:column; align-items:center; gap:12px; padding:26px 0 16px; }
+.lockbox__icon{ width:46px; height:46px; color:var(--blue); }
+.lockbox__t{ margin:0; font-size:13.5px; color:var(--fog); }
+.lockbox__input{
+  width:180px; padding:13px 14px; text-align:center;
+  border-radius:var(--r-md); border:1px solid var(--line-2);
+  background:var(--ink); color:var(--paper);
+  font-family:var(--t-mono); font-size:22px; letter-spacing:.32em;
+}
+.lockbox__input:focus{ outline:none; border-color:var(--blue); }
+.lockbox__err{ margin:0; font-size:12.5px; color:var(--red); }
+
+.admnote{
+  padding:11px 13px; margin-bottom:4px;
+  border:1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius:var(--r-md);
+  background:color-mix(in srgb, var(--amber) 8%, transparent);
+  font-size:11.5px; line-height:1.65; color:var(--fog);
+}
+.admnote b{ color:var(--amber); }
+
+.admgrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.admcell{
+  padding:12px 13px;
+  border:1px solid var(--line); border-radius:var(--r-md);
+  background:var(--ink-2);
+  display:flex; flex-direction:column; gap:3px;
+}
+.admcell__v{
+  font-family:var(--t-mono); font-size:19px; font-weight:700;
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--paper);
+}
+.admcell__v.sm{ font-size:13px; letter-spacing:0; }
+.admcell__k{ font-size:10.5px; letter-spacing:.04em; color:var(--fog-2); }
+
+.admlist{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; }
+.admlist li{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  padding:9px 0; border-bottom:1px solid var(--line);
+  font-size:12.5px; color:var(--fog);
+}
+.admlist li b{
+  font-family:var(--t-mono); font-size:11.5px; font-weight:600;
+  color:var(--paper); text-align:right; word-break:break-all;
+}
+
 /* ---------- 마이크 권한 안내 ---------- */
 .micstate{
   flex:none; display:flex; align-items:center; gap:9px;
@@ -1026,6 +1076,27 @@ input, textarea{ font:inherit; }
   font-family:var(--t-mono); font-size:10px; letter-spacing:.1em;
   color:var(--fog-2);
 }
+/* 자동 판별한 답변 가이드 */
+.qlist .qguide{
+  display:block; margin-top:7px; padding:9px 10px;
+  border-left:2px solid color-mix(in srgb, var(--amber) 55%, transparent);
+  border-radius:0 8px 8px 0;
+  background:color-mix(in srgb, var(--amber) 7%, transparent);
+  font-size:12px; line-height:1.6; color:var(--fog);
+}
+
+/* 리포트: 문항 제목 + 받아쓴 답변 */
+.fblist li.qhead{
+  border-left-color:var(--paper);
+  background:var(--ink-1);
+}
+.fblist li.sub{ margin-left:12px; }
+.fblist .qscript{
+  display:block; margin-top:6px;
+  font-size:12.5px; line-height:1.7; color:var(--fog-2);
+  font-style:italic;
+  max-height:7.5em; overflow-y:auto;
+}
 .qlist .qtxt{ flex:1 1 auto; font-size:14.5px; line-height:1.55; }
 .qlist .qdel{
   flex:none; width:32px; height:32px; display:grid; place-items:center;
@@ -1091,7 +1162,7 @@ input, textarea{ font:inherit; }
   <header class="board">
     <div>
       <p class="eyebrow">Cabin Crew Interview</p>
-      <h1 class="board__title">승무원 면접<br><em>질문 뽑기</em></h1>
+      <h1 class="board__title"><span id="adminGate" role="button" tabindex="0" aria-label="승무원 면접">승무원 면접</span><br><em>질문 뽑기</em></h1>
       <p class="board__sub">버튼 하나로 실전처럼. 뽑은 질문은 한 바퀴 돌 때까지 다시 나오지 않습니다.</p>
     </div>
 
@@ -1518,7 +1589,12 @@ input, textarea{ font:inherit; }
 
       <ul class="axes" id="exAxes"></ul>
 
-      <h3 class="subhead">피드백</h3>
+      <h3 class="subhead">답변 내용 <em>· 무엇을 말했는가</em></h3>
+      <div id="exContentWrap">
+        <ul class="fblist" id="exContent"></ul>
+      </div>
+
+      <h3 class="subhead">목소리 <em>· 어떻게 말했는가</em></h3>
       <ul class="fblist" id="exFeedback"></ul>
 
       <h3 class="subhead">문항별 기록</h3>
@@ -1539,6 +1615,72 @@ input, textarea{ font:inherit; }
         </button>
       </div>
       <button class="btn btn--go" id="exDone" style="width:100%">마치기</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== 관리자 모드 ========== -->
+<div class="sheet" id="sheetAdmin" hidden role="dialog" aria-modal="true" aria-label="관리자 모드">
+  <div class="sheet__panel" style="--sig:var(--blue)">
+    <div class="sheet__grip"></div>
+    <div class="sheet__head">
+      <h2 id="adminTitle">관리자 모드</h2>
+      <button class="iconbtn" data-close="sheetAdmin" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- 잠금 화면 -->
+    <div class="sheet__body" id="adminLock">
+      <div class="lockbox">
+        <svg class="lockbox__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10.5" width="16" height="11" rx="3"/><path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5"/><circle cx="12" cy="16" r="1.3" fill="currentColor"/></svg>
+        <p class="lockbox__t">비밀번호를 입력하세요</p>
+        <input class="lockbox__input" id="adminPw" type="password" inputmode="numeric"
+               autocomplete="off" placeholder="••••" aria-label="관리자 비밀번호">
+        <p class="lockbox__err" id="adminErr" hidden>비밀번호가 맞지 않습니다</p>
+      </div>
+    </div>
+
+    <!-- 대시보드 -->
+    <div class="sheet__body" id="adminBody" hidden>
+      <div class="admnote" id="admScopeNote"></div>
+
+      <h3 class="subhead">접속 기록</h3>
+      <div class="admgrid" id="admVisit"></div>
+
+      <h3 class="subhead">학습 현황</h3>
+      <div class="admgrid" id="admStudy"></div>
+
+      <h3 class="subhead">실전 모의평가</h3>
+      <div class="admgrid" id="admExam"></div>
+
+      <h3 class="subhead">녹음·저장소</h3>
+      <div class="admgrid" id="admStore"></div>
+
+      <h3 class="subhead">취약 주제 <em>· 답변율 낮은 순</em></h3>
+      <ul class="tagstat" id="admWeak"></ul>
+
+      <h3 class="subhead">실행 환경</h3>
+      <ul class="admlist" id="admEnv"></ul>
+    </div>
+
+    <div class="sheet__foot" id="adminFootLock">
+      <button class="btn btn--go" id="adminEnter" style="width:100%">확인</button>
+    </div>
+
+    <div class="sheet__foot" id="adminFootBody" hidden>
+      <div class="stage__minor" style="grid-template-columns:1fr 1fr; margin-bottom:9px">
+        <button class="mbtn" id="admCopy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+          <span>기록 복사</span>
+        </button>
+        <button class="mbtn" id="admWipe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+          <span>전체 초기화</span>
+        </button>
+      </div>
+      <button class="btn btn--ghost" id="admLockAgain" style="width:100%">잠그고 닫기</button>
     </div>
   </div>
 </div>
@@ -1924,8 +2066,198 @@ input, textarea{ font:inherit; }
     '새 정보를 넣지 말고, 앞서 말한 강점 하나를 짧게 재확인 + 입학 의지로. 20초 이내가 적당합니다.'
   ];
 
+  /* ============================================================
+     답변 내용 채점 기준 — OFFICIAL 과 같은 순서(인덱스 기준)
+       k : 이 질문에 답했다면 나올 법한 핵심어. 하나도 없으면 '동문서답' 으로 본다
+       n : 반드시 들어가야 할 요소
+           exp=구체적 경험  why=이유·근거  plan=계획·포부
+           act=대처 절차    def=개념 설명  num=구체적 수치
+     ============================================================ */
+  var RUBRIC = [
+    { k: ['자기소개', '저는', '강점', '준비', '승무원', '지원'], n: ['plan'] },
+    { k: ['단어', '표현', '이유', '처럼', '같은'], n: ['why'] },
+    { k: ['장점', '단점', '부족', '고치', '노력'], n: ['exp'] },
+    { k: ['첫인상', '인상', '친구', '이미지', '보인'], n: ['why'] },
+    { k: ['성격', '자질', '승무원', '맞', '장점'], n: ['exp'] },
+    { k: ['습관', '고치', '성격', '노력', '바꾸'], n: ['exp'] },
+    { k: ['승무원', '이유', '계기', '매력', '서비스', '되고'], n: ['why', 'exp'] },
+    { k: ['꿈', '계기', '어릴', '처음', '비행기', '때부터'], n: ['exp'] },
+    { k: ['학교', '지원', '학과', '커리큘럼', '시설', '교수', '이유'], n: ['why'] },
+    { k: ['학과', '교육', '과목', '실습', '자격증', '커리큘럼'], n: ['num'] },
+    { k: ['준비', '연습', '면접', '오늘', '모의'], n: ['exp'] },
+    { k: ['긴장', '떨', '설레', '기분', '심정', '기뻐'], n: [] },
+    { k: ['뽑아', '강점', '차별', '자신', '저를', '적합'], n: ['why'] },
+    { k: ['학업', '계획', '학년', '자격증', '어학', '목표'], n: ['plan', 'num'] },
+    { k: ['과목', '수업', '기대', '배우', '실습'], n: ['why'] },
+    { k: ['대학', '동아리', '활동', '경험', '해보고'], n: ['plan'] },
+    { k: ['졸업', '진로', '항공사', '취업', '계획'], n: ['plan'] },
+    { k: ['준비', '어학', '체력', '아르바이트', '공부'], n: ['exp'] },
+    { k: ['고등학교', '기억', '친구', '선생', '활동', '축제'], n: ['exp'] },
+    { k: ['봉사', '활동', '도와', '배운', '느낀'], n: ['exp'] },
+    { k: ['동아리', '역할', '활동', '맡', '부장'], n: ['exp'] },
+    { k: ['아르바이트', '손님', '힘들', '매장', '일'], n: ['exp'] },
+    { k: ['리더', '이끌', '조율', '팀', '맡'], n: ['exp'] },
+    { k: ['갈등', '의견', '충돌', '팀', '해결', '대화'], n: ['exp', 'act'] },
+    { k: ['실패', '실수', '좌절', '극복', '배운'], n: ['exp'] },
+    { k: ['서비스', '감동', '받았', '직원', '친절'], n: ['exp'] },
+    { k: ['서비스', '불쾌', '불편', '개선', '바꾸'], n: ['exp', 'act'] },
+    { k: ['외국인', '영어', '소통', '대화', '손짓', '통역'], n: ['exp'] },
+    { k: ['자질', '배려', '안전', '팀워크', '책임', '소통'], n: ['why'] },
+    { k: ['업무', '안전', '서비스', '승객', '역할'], n: ['why'] },
+    { k: ['힘든', '시차', '체력', '감정', '불규칙', '근무'], n: ['why'] },
+    { k: ['안전', '서비스', '우선', '중요', '생명'], n: ['why'] },
+    { k: ['서비스', '배려', '마음', '생각', '진심'], n: ['def', 'exp'] },
+    { k: ['승무원', '지상직', '다른', '도전', '서비스'], n: ['plan'] },
+    { k: ['10년', '선임', '사무장', '모습', '목표', '후에'], n: ['plan'] },
+    { k: ['체력', '운동', '관리', '건강', '헬스', '달리'], n: ['exp', 'num'] },
+    { k: ['이미지', '표정', '자세', '말투', '인상', '관리'], n: ['exp'] },
+    { k: ['항공사', '대한항공', '아시아나', '제주항공', '인재상', '이유'], n: ['why'] },
+    { k: ['fsc', 'lcc', '저비용', '대형', '운임', '노선', '차이', '서비스'], n: ['def'] },
+    { k: ['대한항공', '아시아나', '제주항공', '진에어', '티웨이', '에어부산', '특징'], n: ['def'] },
+    { k: ['뉴스', '이슈', '항공', '최근', '기사', '증편'], n: ['def'] },
+    { k: ['안전', '점검', '브리핑', '도어', '벨트', '수하물', '확인'], n: ['act'] },
+    { k: ['취항지', '나라', '도시', '문화', '가보고', '승객'], n: ['why'] },
+    { k: ['취한', '술', '승객', '진정', '보고', '안전', '규정'], n: ['act'] },
+    { k: ['기내식', '사과', '죄송', '대안', '메뉴', '설명'], n: ['act'] },
+    { k: ['아이', '울', '보호자', '승객', '양해', '도와'], n: ['act'] },
+    { k: ['좌석', '만석', '변경', '죄송', '안내', '대안'], n: ['act'] },
+    { k: ['환자', '아프', '응급', '의료', '기장', '보고'], n: ['act'] },
+    { k: ['동료', '실수', '사과', '승객', '해결', '먼저'], n: ['act'] },
+    { k: ['선배', '지시', '부당', '규정', '안전', '건의'], n: ['act'] },
+    { k: ['요구', '거절', '안내', '규정', '대신', '가능'], n: ['act'] },
+    { k: ['외국인', '다시', '천천히', '동료', '도움', '표현'], n: ['act'] },
+    { k: ['규정', '동료', '보고', '안전', '알리'], n: ['act'] },
+    { k: ['팀워크', '소통', '신뢰', '배려', '공유', '협력'], n: ['exp'] },
+    { k: ['존경', '닮고', '어머니', '아버지', '선생', '이유'], n: ['why'] },
+    { k: ['부모님', '응원', '반대', '지지', '설득'], n: ['exp'] },
+    { k: ['스트레스', '운동', '음악', '산책', '휴식', '푸'], n: ['exp'] },
+    { k: ['책', '영화', '읽', '인상', '내용', '느낀'], n: ['exp'] },
+    { k: ['배려', '먼저', '챙', '상대', '도와', '마음'], n: ['exp'] },
+    { k: ['좌우명', '신조', '원칙', '말', '생각'], n: ['why', 'exp'] },
+    { k: ['거절', '단호', '유연', '기준', '규정'], n: ['why'] },
+    { k: ['hello', 'my', 'name', 'nice', 'am', 'i'], n: [] },
+    { k: ['because', 'want', 'flight', 'attendant', 'people', 'i'], n: [] },
+    { k: ['friend', 'she', 'he', 'my', 'we', 'is'], n: [] },
+    { k: ['일본어', '중국어', '외국어', '공부', '인사', '배우'], n: [] },
+    { k: ['지원자', '답변', '배운', '생각', '들으'], n: ['why'] },
+    { k: ['면접장', '들어오', '생각', '분위기', '직원', '긴장'], n: [] },
+    { k: ['마지막', '감사', '기회', '열심', '다짐', '뽑'], n: ['plan'] }
+  ];
+
   /* 내가 추가한 질문에는 개별 문안이 없으므로 공통 틀을 안내한다 */
   var TIP_CUSTOM = '결론을 먼저 말하고(두괄식) → 그렇게 말할 수 있는 경험 하나 → 그래서 승무원으로서 어떻게 하겠다, 3단으로 묶어보세요. 40~60초가 가장 안정적입니다.';
+
+  /* ============================================================
+     사용자가 추가한 질문 자동 분석
+     질문 문장의 어미와 표현으로 유형을 판별하고, 그 유형의 답변 틀과
+     질문에서 뽑아낸 핵심어로 가이드·채점 기준을 만든다.
+     ============================================================ */
+  var QTYPES = [
+    { id: 'eng',   name: '영어 답변', n: [],
+      test: function (q) { return (q.match(/[A-Za-z]/g) || []).length > q.replace(/\s/g, '').length * 0.5; },
+      tip: '짧은 문장 3~4개면 충분합니다. 어려운 단어보다 또박또박한 발음과 미소가 점수입니다. 이유 1개 + 근거 1개 + 마무리 구조를 미리 외워 두세요.' },
+
+    { id: 'intro', name: '자기소개', n: ['plan'],
+      re: /자기소개|본인을 소개|자신을 소개|소개해\s*주|소개를 해/,
+      tip: '「직무와 이어지는 강점 1개 → 그것을 증명하는 경험 1개 → 포부」 순서로. 이름·출신 나열은 빼고 45~55초에 맞추세요.' },
+
+    { id: 'pros',  name: '장단점', n: ['exp'],
+      re: /장점|단점|강점|약점|잘하는|부족한/,
+      tip: '장점은 서비스 상황에서 쓰인 사례로 증명하고, 단점은 "고치는 중인 행동"으로 마무리하세요. "없습니다"가 가장 나쁜 답입니다.' },
+
+    { id: 'act',   name: '상황 대처', n: ['act'],
+      re: /(다면|한다면|경우|상황).*(어떻게|대처|하시겠|하겠)|어떻게 하시겠|어떻게 대처|대응하|행동하시겠/,
+      tip: '「먼저 ~하고, 그다음 ~하겠습니다」 순서로 답하세요. 안전과 규정을 먼저 챙기고, 그다음 승객의 감정을 살피는 순서가 가장 안전합니다. 감정적 대응은 금물입니다.' },
+
+    { id: 'exp',   name: '경험', n: ['exp'],
+      re: /경험|적이 있|해 본|해본|사례|기억에 남|힘들었|보람|배운 점/,
+      tip: '「언제·어디서(상황) → 내가 한 행동 → 결과와 배운 점」 3단으로. 사건 자체보다 내가 한 행동에 시간을 쓰고, 30초 안에 끝내세요.' },
+
+    { id: 'why',   name: '이유·동기', n: ['why', 'exp'],
+      re: /^왜|왜\s|이유|동기|계기|무엇 때문|어째서/,
+      tip: '결론(이유)을 먼저 한 문장으로 말하고, 그렇게 생각하게 된 계기나 경험 하나를 붙이세요. 이유만 나열하면 설득력이 약합니다.' },
+
+    { id: 'plan',  name: '계획·포부', n: ['plan', 'num'],
+      re: /계획|포부|목표|10년|앞으로|장래|진로|입학 후|졸업 후|되고 싶/,
+      tip: '시기별로 나눠 구체적으로 말하세요. 자격증·어학 목표에 숫자(점수, 시기)를 넣으면 설득력이 크게 올라갑니다.' },
+
+    { id: 'def',   name: '견해·정의', n: ['def', 'why'],
+      re: /무엇이라고 생각|이란|란 무엇|차이|정의|어떻게 생각|중요하다고|생각하나요|생각합니까/,
+      tip: '한 문장으로 정의나 결론을 먼저 내리고, 그 근거나 사례로 뒷받침하세요. 정의 없이 경험만 나열하면 흐려집니다.' },
+
+    { id: 'know',  name: '지식·설명', n: ['def'],
+      re: /설명해|아는 대로|아는 것|특징|무엇인가요|무엇입니까|알고 있/,
+      tip: '아는 것만 정확히 말하세요. 틀린 정보를 말하는 것보다 적게 말하는 편이 낫습니다. 사실을 짚은 뒤 본인 생각을 한 줄 덧붙이면 좋습니다.' }
+  ];
+
+  var QTYPE_DEFAULT = { id: 'general', name: '일반', n: ['why'], tip: TIP_CUSTOM };
+
+  var KW_STOP = ['무엇', '어떤', '어떻', '생각', '말해', '보세', '세요', '당신', '본인', '자신',
+                 '대해', '대한', '그리고', '하는', '있는', '것을', '것이', '합니', '니까',
+                 '인가', '나요', '까요', '습니', '주세', '주십', '시오', '해주', '해보',
+                 '지요', '관해', '관한', '있나', '있습', '봅시', '이라', '라면', '경우'];
+
+  var PARTICLE = /(으로써|으로서|이라고|에게서|에서는|이란|으로|에서|에게|한테|보다|처럼|라고|까지|부터|이나|거나|와의|과의|에|은|는|이|가|을|를|의|와|과|도|만|로|란)$/;
+  var ENDING   = /(해주세요|해 주세요|하세요|보세요|합니까|입니까|인가요|하나요|한가요|했던|었던|았던|다면|해야|해서|하는|되는|되면|이신|하신|해|한|던)$/;
+
+  /**
+   * 질문 문장에서 핵심어를 뽑는다.
+   * 조사와 흔한 어미를 떼어 '어근'에 가깝게 만든다. 그래야 답변에서
+   * 다른 조사로 쓰여도("항공사에" 질문 → "항공사를" 답변) 맞출 수 있다.
+   */
+  function extractKeywords(q) {
+    var toks = q.replace(/[?!.,·"'“”()\[\]~]/g, ' ').split(/\s+/).filter(Boolean);
+    var out = [];
+    toks.forEach(function (t) {
+      var w = t;
+      var stripped = w.replace(PARTICLE, '');
+      if (stripped.length >= 2) w = stripped;
+      stripped = w.replace(ENDING, '');
+      if (stripped.length >= 2) w = stripped;
+
+      if (w.length < 2) return;
+      if (/^(무엇|어떤|어떻|어째|언제|누구|어디|얼마|가장|정말|과연)/.test(w)) return;
+      if (KW_STOP.some(function (s) { return w.indexOf(s) !== -1; })) return;
+      if (out.indexOf(w) === -1) out.push(w);
+    });
+    return out.slice(0, 6);
+  }
+
+  /**
+   * 답변 안에 핵심어가 나왔는지. 3글자 이상이면 마지막 한 글자를 뗀
+   * 형태로도 인정한다 — 활용형 차이를 흡수하기 위해서다.
+   */
+  function hasKeyword(flatLower, kw) {
+    var k = kw.toLowerCase();
+    if (flatLower.indexOf(k) !== -1) return true;
+    return k.length >= 3 && flatLower.indexOf(k.slice(0, -1)) !== -1;
+  }
+
+  var derivedCache = {};
+
+  /** 질문 문장 → { type, k, n, g }. 같은 문장은 한 번만 계산한다. */
+  function deriveRubric(q) {
+    if (derivedCache[q]) return derivedCache[q];
+
+    var type = QTYPE_DEFAULT;
+    for (var i = 0; i < QTYPES.length; i++) {
+      var t = QTYPES[i];
+      var matched = t.test ? t.test(q) : (t.re && t.re.test(q));
+      if (matched) { type = t; break; }
+    }
+
+    var k = extractKeywords(q);
+    var res = {
+      type: type.id,
+      typeName: type.name,
+      k: k,
+      n: type.n,
+      g: type.tip,
+      derived: true
+    };
+    derivedCache[q] = res;
+    return res;
+  }
 
   /* 공유용 주소 — 아래 QR 이미지에 인코딩된 값과 동일해야 한다.
      GitHub Pages 주소를 쓰는 이유: claude.ai 아티팩트 프레임에서는 마이크가
@@ -1942,7 +2274,8 @@ input, textarea{ font:inherit; }
     answered: 'ccq.answered.v1',   // v1 유산: 단순 완료 배열 (아래에서 status 로 이관)
     status:   'ccq.status.v2',     // { 질문문장: 'done' | 'fail' }
     onlyTodo: 'ccq.onlytodo.v1',
-    exams:    'ccq.exams.v1'
+    exams:    'ccq.exams.v1',
+    meta:     'ccq.meta.v1'
   };
 
   function load(key, fallback) {
@@ -1976,6 +2309,30 @@ input, textarea{ font:inherit; }
     save(K.status, status);
   }
   if (!Array.isArray(exams)) exams = [];
+
+  /* ---------- 이용 기록 (이 기기 한정) ---------- */
+  var meta = load(K.meta, null);
+  if (!meta || typeof meta !== 'object') meta = { visits: 0, firstAt: 0, lastAt: 0, activeMs: 0 };
+  meta.visits = (meta.visits || 0) + 1;
+  if (!meta.firstAt) meta.firstAt = Date.now();
+  var prevVisitAt = meta.lastAt || 0;
+  meta.lastAt = Date.now();
+  save(K.meta, meta);
+
+  // 화면을 실제로 보고 있는 시간만 누적한다
+  (function trackActive() {
+    var since = Date.now();
+    var flush = function () {
+      if (document.visibilityState === 'visible') {
+        meta.activeMs = (meta.activeMs || 0) + (Date.now() - since);
+        save(K.meta, meta);
+      }
+      since = Date.now();
+    };
+    document.addEventListener('visibilitychange', flush);
+    window.addEventListener('pagehide', flush);
+    setInterval(flush, 30000);
+  })();
 
   if (!Array.isArray(custom)) custom = [];
   if (!Array.isArray(favs)) favs = [];
@@ -2074,11 +2431,17 @@ input, textarea{ font:inherit; }
     all:      { label: '통합',   color: 'var(--blue)',  countEl: 'cntAll',      key: 'All' }
   };
 
-  // 가이드 문안을 질문에 붙여 둔다 (인덱스가 어긋나면 공통 문안으로 떨어진다)
-  OFFICIAL.forEach(function (item, i) { item.g = TIPS[i] || TIP_CUSTOM; });
+  // 가이드 문안과 채점 기준을 질문에 붙여 둔다 (인덱스가 어긋나면 조용히 비워 둔다)
+  OFFICIAL.forEach(function (item, i) {
+    item.g = TIPS[i] || TIP_CUSTOM;
+    item.r = RUBRIC[i] || null;
+  });
 
   function customItems() {
-    return custom.map(function (c) { return { q: c.q, t: '내 질문', g: TIP_CUSTOM }; });
+    return custom.map(function (c) {
+      var d = deriveRubric(c.q);
+      return { q: c.q, t: '내 질문', g: d.g, r: { k: d.k, n: d.n, derived: true }, d: d };
+    });
   }
   /** 카테고리의 전체 질문 집합 (진척도 계산의 기준) */
   function pool(mode) {
@@ -2535,6 +2898,18 @@ input, textarea{ font:inherit; }
       var txt = document.createElement('span');
       txt.className = 'qtxt';
       txt.textContent = item.q;
+
+      // 자동 판별한 유형과 가이드를 그 자리에서 보여 준다
+      var d = deriveRubric(item.q);
+      var meta = document.createElement('span');
+      meta.className = 'qmeta';
+      meta.textContent = d.typeName + ' 유형' + (d.k.length ? ' · 핵심어 ' + d.k.slice(0, 3).join(', ') : '');
+      txt.appendChild(meta);
+
+      var guide = document.createElement('span');
+      guide.className = 'qguide';
+      guide.textContent = d.g;
+      txt.appendChild(guide);
 
       var chk = attachCheck(li, item.q);
 
@@ -3250,7 +3625,7 @@ input, textarea{ font:inherit; }
   var exam = {
     n: 3, per: 80, scope: 'all',
     list: [], idx: 0, results: [],
-    rec: null, tId: null, endAt: 0, running: false
+    rec: null, stt: null, tId: null, endAt: 0, running: false
   };
 
   /** 목표 구간 안이면 100점, 바깥 한계에서 0점으로 선형 감점 */
@@ -3373,7 +3748,12 @@ input, textarea{ font:inherit; }
     var note = $('exMicNote');
     if (canRecord) {
       note.className = 'micnote micnote--ok';
-      note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 요청합니다. 허용해야 목소리 분석과 녹음이 됩니다. 녹음은 이 기기 안에만 저장됩니다.';
+      note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 요청합니다. 허용하면 답변을 녹음하고, ' +
+        (canTranscribe
+          ? '<strong>말한 내용까지 받아써서</strong> 질문에 맞게 답했는지 분석해 드립니다. '
+          : '목소리만 분석합니다(이 브라우저는 받아쓰기 미지원). ') +
+        '녹음 파일은 이 기기 안에만 저장됩니다.' +
+        (canTranscribe ? '<br><span style="color:var(--fog-2)">받아쓰기는 브라우저 기본 음성인식을 쓰며, 그 과정에서 음성이 브라우저 제조사 서버로 전송될 수 있습니다.</span>' : '');
     } else if (frameBlocksMic) {
       note.className = 'micnote micnote--no';
       note.innerHTML = '이 화면은 마이크를 쓸 수 없는 형태로 실행 중이라 <strong>목소리 분석 없이 시간 관리 연습</strong>으로 진행됩니다. ' +
@@ -3440,6 +3820,13 @@ input, textarea{ font:inherit; }
     $('exMeter').hidden = true;
     $('exLevel').style.width = '0%';
 
+    // 답변 받아쓰기 — 영어 문항은 영어로 인식한다
+    exam.stt = null;
+    if (canTranscribe) {
+      var t = createTranscriber(item.t === '영어' ? 'en-US' : 'ko-KR');
+      if (t.start()) exam.stt = t;
+    }
+
     // 녹음 시도 — 실패해도 시간 연습은 계속된다
     if (canRecord) {
       exam.rec = createRecorder();
@@ -3486,15 +3873,17 @@ input, textarea{ font:inherit; }
     var item = exam.list[exam.idx];
     var used = exam.per - Math.max(0, (exam.endAt - Date.now()) / 1000);
 
-    var done = function (metrics, blobInfo) {
-      exam.results.push({ item: item, metrics: metrics, usedSec: used });
+    var done = function (metrics, blobInfo, transcript) {
+      var content = analyzeContent(transcript, item);
+      exam.results.push({ item: item, metrics: metrics, usedSec: used, content: content });
+
       if (blobInfo) {
         var meta = {
           id: 'r' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           at: Date.now(), date: fmtDate(Date.now()),
           q: item.q, tag: item.t,
           durationMs: blobInfo.durationMs, mime: blobInfo.mime, size: blobInfo.blob.size,
-          metrics: metrics, exam: true
+          metrics: metrics, transcript: transcript || '', exam: true
         };
         recAdd(meta, blobInfo.blob).then(refreshRecCount).catch(function () {});
       }
@@ -3503,14 +3892,19 @@ input, textarea{ font:inherit; }
       else showReport();
     };
 
-    if (exam.rec && exam.rec.isActive()) {
-      var r = exam.rec; exam.rec = null;
-      r.stop().then(function (res) {
-        done(res.metrics, (res.blob && res.blob.size > 800) ? res : null);
-      }).catch(function () { done(null, null); });
-    } else {
-      done(null, null);
-    }
+    // 받아쓰기를 먼저 닫고, 그 결과와 함께 녹음을 마무리한다
+    var sttP = exam.stt ? exam.stt.stop() : Promise.resolve('');
+    exam.stt = null;
+
+    sttP.then(function (transcript) {
+      if (exam.rec && exam.rec.isActive()) {
+        var r = exam.rec; exam.rec = null;
+        return r.stop().then(function (res) {
+          done(res.metrics, (res.blob && res.blob.size > 800) ? res : null, transcript);
+        });
+      }
+      done(null, null, transcript);
+    }).catch(function () { done(null, null, ''); });
   }
 
   function showReport() {
@@ -3600,6 +3994,44 @@ input, textarea{ font:inherit; }
       save(K.exams, exams);
     }
 
+    // ── 답변 내용 피드백 (문항별로 묶어서 보여 준다)
+    var wrap = $('exContentWrap'), cul = $('exContent');
+    cul.innerHTML = '';
+    var withText = exam.results.filter(function (r) { return r.content; });
+
+    if (withText.length === 0) {
+      var li0 = document.createElement('li');
+      li0.className = 'is-warn';
+      li0.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+      li0.querySelector('.fb__t').textContent = canTranscribe ? '답변을 받아쓰지 못했습니다' : '이 브라우저는 답변 받아쓰기를 지원하지 않습니다';
+      li0.querySelector('.fb__d').textContent = canTranscribe
+        ? '말소리가 인식되지 않았습니다. 마이크에 조금 더 가까이, 또렷하게 말해 보세요.'
+        : 'Chrome 이나 삼성 인터넷에서 열면 답변 내용까지 분석해 드립니다.';
+      cul.appendChild(li0);
+    } else {
+      withText.forEach(function (r, i) {
+        var head = document.createElement('li');
+        head.className = 'qhead';
+        head.innerHTML = '<span class="fb__t"></span><span class="fb__d qscript"></span>';
+        head.querySelector('.fb__t').textContent = (i + 1) + '. ' + r.item.q;
+        head.querySelector('.qscript').textContent = '“' + r.content.transcript + '”';
+        cul.appendChild(head);
+
+        var fbs = contentFeedback(r.content, r.item);
+        var order = { bad: 0, warn: 1, good: 2 };
+        fbs.sort(function (a, b) { return order[a.lv] - order[b.lv]; });
+        fbs.slice(0, 4).forEach(function (f) {
+          var li = document.createElement('li');
+          li.className = 'is-' + f.lv + ' sub';
+          li.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+          li.querySelector('.fb__t').textContent = f.t;
+          li.querySelector('.fb__d').textContent = f.d;
+          cul.appendChild(li);
+        });
+      });
+    }
+    wrap.hidden = false;
+
     // 문항별 기록
     $('exPerQ').innerHTML = '';
     exam.results.forEach(function (r, i) {
@@ -3616,6 +4048,178 @@ input, textarea{ font:inherit; }
     });
 
     render();
+  }
+
+  /* ============================================================
+     관리자 모드
+     주의: 이 앱에는 서버가 없다. 따라서 여기 보이는 수치는 모두
+     '이 기기, 이 브라우저' 의 기록이다. 다른 사람의 이용 기록은
+     애초에 수집되지도, 전송되지도 않으므로 볼 수 없다.
+     비밀번호는 코드 안에 있어 보안 장치가 아니라 실수 방지용이다.
+     ============================================================ */
+  var ADMIN_PW = '77777';
+  var adminTaps = 0, adminTapAt = 0, adminOpen = false;
+
+  function fmtWhen(ms) {
+    if (!ms) return '—';
+    var d = new Date(ms), p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '.' + p(d.getMonth() + 1) + '.' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function fmtSpan(ms) {
+    if (!ms || ms < 1000) return '0분';
+    var m = Math.floor(ms / 60000);
+    if (m < 60) return m + '분';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + '시간 ' + (m % 60) + '분';
+    return Math.floor(h / 24) + '일 ' + (h % 24) + '시간';
+  }
+  function fmtBytes(b) {
+    if (!b) return '0KB';
+    return b < 1048576 ? Math.round(b / 1024) + 'KB'
+         : b < 1073741824 ? (b / 1048576).toFixed(1) + 'MB'
+         : (b / 1073741824).toFixed(2) + 'GB';
+  }
+
+  function cell(parent, value, key, small) {
+    var d = document.createElement('div');
+    d.className = 'admcell';
+    var v = document.createElement('span');
+    v.className = 'admcell__v' + (small ? ' sm' : '');
+    v.textContent = value;
+    var k = document.createElement('span');
+    k.className = 'admcell__k';
+    k.textContent = key;
+    d.appendChild(v); d.appendChild(k);
+    parent.appendChild(d);
+  }
+  function row(parent, k, v) {
+    var li = document.createElement('li');
+    var a = document.createElement('span'); a.textContent = k;
+    var b = document.createElement('b'); b.textContent = v;
+    li.appendChild(a); li.appendChild(b);
+    parent.appendChild(li);
+  }
+
+  function browserName() {
+    if (isSamsung) return '삼성 인터넷';
+    if (isCrIOS) return 'Chrome (iOS)';
+    if (isFxIOS || isFirefox) return 'Firefox';
+    if (isIOS) return 'Safari';
+    if (/Edg\//.test(UA)) return 'Edge';
+    if (/Chrome\//.test(UA)) return 'Chrome';
+    return '기타';
+  }
+  function osName() {
+    if (isIOS) return 'iOS';
+    if (isAndroid) return 'Android';
+    if (/Windows/.test(UA)) return 'Windows';
+    if (/Mac/.test(UA)) return 'macOS';
+    return '기타';
+  }
+
+  function adminSnapshot() {
+    var w = progress('all'), po = progress('official'), pc = progress('custom');
+    var scores = exams.map(function (e) { return e.score; });
+    var avg = scores.length ? Math.round(scores.reduce(function (a, b) { return a + b; }, 0) / scores.length) : 0;
+    return { w: w, po: po, pc: pc, avg: avg, best: scores.length ? Math.max.apply(null, scores) : 0 };
+  }
+
+  function renderAdmin() {
+    var s = adminSnapshot();
+
+    $('admScopeNote').innerHTML =
+      '이 앱은 <b>서버가 없는 구조</b>라, 아래 수치는 모두 <b>지금 이 기기·브라우저</b>의 기록입니다. ' +
+      '링크를 공유받은 다른 사람의 이용 기록은 수집되거나 전송되지 않으므로 확인할 수 없습니다.';
+
+    var v = $('admVisit'); v.innerHTML = '';
+    cell(v, String(meta.visits || 0), '총 접속 횟수');
+    cell(v, fmtSpan(meta.activeMs), '누적 사용 시간');
+    cell(v, fmtWhen(meta.firstAt), '처음 사용', true);
+    cell(v, fmtWhen(prevVisitAt), '직전 접속', true);
+
+    var st = $('admStudy'); st.innerHTML = '';
+    cell(st, String(drawn), '질문 뽑은 횟수');
+    cell(st, s.w.done + ' / ' + s.w.total, '답변함');
+    cell(st, String(s.w.fail), '못했음');
+    cell(st, (s.w.total ? Math.round(s.w.done / s.w.total * 100) : 0) + '%', '전체 달성률');
+    cell(st, s.po.done + '/' + s.po.total, '기출 진행', true);
+    cell(st, s.pc.total ? (s.pc.done + '/' + s.pc.total) : '없음', '내 질문 진행', true);
+
+    var ex = $('admExam'); ex.innerHTML = '';
+    cell(ex, String(exams.length), '평가 횟수');
+    cell(ex, exams.length ? String(s.avg) : '—', '평균 점수');
+    cell(ex, exams.length ? String(s.best) : '—', '최고 점수');
+    cell(ex, exams.length ? fmtWhen(exams[exams.length - 1].at) : '—', '최근 평가', true);
+
+    var weak = $('admWeak'); weak.innerHTML = '';
+    byTag().slice(0, 5).forEach(function (t) { weak.appendChild(statRow(t.tag, t.done, t.fail, t.total)); });
+
+    var env = $('admEnv'); env.innerHTML = '';
+    row(env, '브라우저', browserName());
+    row(env, '운영체제', osName());
+    row(env, '화면', window.innerWidth + ' × ' + window.innerHeight);
+    row(env, '실행 형태', inFrame ? '프레임 안 (기능 제한)' : '단독 페이지');
+    row(env, '마이크 녹음', canRecord ? '가능' : (frameBlocksMic ? '차단 (구조적)' : '불가'));
+    row(env, '답변 받아쓰기', canTranscribe ? '가능' : '미지원');
+    row(env, '저장 기능', (function () { try { localStorage.setItem('_a', '1'); localStorage.removeItem('_a'); return '정상'; } catch (e) { return '차단됨'; } })());
+    // data: URL 처럼 경로가 문서 전체인 경우가 있어 잘라서 보여 준다
+    var addr = (location.host || location.protocol) + location.pathname;
+    row(env, '주소', addr.length > 48 ? addr.slice(0, 45) + '…' : addr);
+
+    // 녹음·저장소는 비동기
+    var store = $('admStore'); store.innerHTML = '';
+    cell(store, '…', '녹음 개수');
+    recList().then(function (rows) {
+      var totalMs = rows.reduce(function (a, r) { return a + (r.durationMs || 0); }, 0);
+      var totalB = rows.reduce(function (a, r) { return a + (r.size || 0); }, 0);
+      store.innerHTML = '';
+      cell(store, String(rows.length), '녹음 개수');
+      cell(store, fmtSpan(totalMs), '녹음 총 길이');
+      cell(store, fmtBytes(totalB), '녹음 용량');
+      cell(store, String(custom.length), '추가한 질문');
+      if (navigator.storage && navigator.storage.estimate) {
+        navigator.storage.estimate().then(function (e) {
+          cell(store, fmtBytes(e.usage || 0), '저장소 사용량');
+          cell(store, persisted === true ? '보장됨' : '자동삭제 가능', '보관 상태', true);
+        }).catch(function () {});
+      }
+    }).catch(function () {
+      store.innerHTML = '';
+      cell(store, '—', '녹음 (사용 불가)');
+      cell(store, String(custom.length), '추가한 질문');
+    });
+  }
+
+  function adminUnlock() {
+    var pw = $('adminPw').value.trim();
+    if (pw !== ADMIN_PW) {
+      $('adminErr').hidden = false;
+      $('adminPw').value = '';
+      buzz([30, 50, 30]);
+      return;
+    }
+    adminOpen = true;
+    $('adminErr').hidden = true;
+    $('adminLock').hidden = true;
+    $('adminFootLock').hidden = true;
+    $('adminBody').hidden = false;
+    $('adminFootBody').hidden = false;
+    $('adminTitle').textContent = '관리자 · 이용 기록';
+    buzz(16);
+    renderAdmin();
+  }
+
+  function openAdmin() {
+    adminOpen = false;
+    $('adminPw').value = '';
+    $('adminErr').hidden = true;
+    $('adminLock').hidden = false;
+    $('adminFootLock').hidden = false;
+    $('adminBody').hidden = true;
+    $('adminFootBody').hidden = true;
+    $('adminTitle').textContent = '관리자 모드';
+    openSheet('sheetAdmin');
+    setTimeout(function () { $('adminPw').focus(); }, 320);
   }
 
   /* ---------- 시트 ---------- */
@@ -3841,6 +4445,206 @@ input, textarea{ font:inherit; }
     };
   }
 
+  /* ============================================================
+     답변 받아쓰기 + 내용 분석
+     브라우저 내장 음성인식으로 답변을 글로 받은 뒤,
+     질문마다 미리 정해 둔 채점 기준(RUBRIC)과 대조해
+     '질문에 맞는 답을 했는지'와 '빠진 요소'를 찾아낸다.
+     ============================================================ */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var canTranscribe = !!SR;
+
+  function createTranscriber(lang) {
+    var rec = null, text = '', alive = false;
+
+    return {
+      start: function () {
+        if (!SR) return false;
+        try {
+          rec = new SR();
+          rec.lang = lang || 'ko-KR';
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.maxAlternatives = 1;
+          text = ''; alive = true;
+
+          rec.onresult = function (e) {
+            for (var i = e.resultIndex; i < e.results.length; i++) {
+              if (e.results[i].isFinal) text += e.results[i][0].transcript + ' ';
+            }
+          };
+          // 침묵이 길면 브라우저가 임의로 끊는다. 아직 답변 중이면 되살린다.
+          rec.onend = function () { if (alive) { try { rec.start(); } catch (e) {} } };
+          rec.onerror = function () {};
+          rec.start();
+          return true;
+        } catch (e) { rec = null; alive = false; return false; }
+      },
+
+      stop: function () {
+        alive = false;
+        return new Promise(function (resolve) {
+          if (!rec) { resolve(''); return; }
+          var done = false;
+          var finish = function () { if (!done) { done = true; resolve(text.trim()); } };
+          rec.onend = finish;
+          try { rec.stop(); } catch (e) { finish(); }
+          setTimeout(finish, 1400);   // onend 가 오지 않는 브라우저 대비
+        });
+      }
+    };
+  }
+
+  /* 요소별 판별 패턴 */
+  var NEED_TEST = {
+    // 주의: '봉사'·'동아리' 같은 명사를 넣으면 그 단어만 말해도 통과해 버린다.
+    // 실제 사례를 말했는지는 '시점 표현'과 '과거 서술'로 가려낸다.
+    exp:  { re: /(작년|재작년|올해|지난해|지난|당시|그때|그 때|고등학교|중학교|학창 시절|처음|한번|한 번|했었|했던|있었|였는데|였습니다|던 적|은 적|한 적|적이 있)/,
+            label: '구체적인 경험 사례',
+            fix: '언제·어디서·무엇을 했는지 한 장면을 넣어 보세요. "작년 카페 아르바이트에서…" 처럼 시작하면 됩니다.' },
+    why:  { re: /(때문|그래서|이유|덕분|왜냐|므로|그런 이유|생각합니다|느꼈)/,
+            label: '이유와 근거',
+            fix: '"왜 그렇게 생각하는지"를 한 문장 덧붙이세요. 주장만 있으면 설득력이 떨어집니다.' },
+    plan: { re: /(하겠|싶습니|계획|목표|되겠|할 것|노력하|준비하|다짐)/,
+            label: '앞으로의 계획·포부',
+            fix: '마무리에 "그래서 앞으로 ~하겠습니다" 를 붙여 방향을 보여 주세요.' },
+    act:  { re: /(먼저|우선|그다음|이후|보고|안내|확인|사과|조치|대응|말씀드리|도와)/,
+            label: '대처 순서',
+            fix: '상황 대처 질문입니다. "먼저 ~하고, 그다음 ~하겠습니다" 처럼 순서로 답해야 합니다.' },
+    def:  { re: /(입니다|이라고|란|차이|의미|뜻|생각합니다|이며)/,
+            label: '개념 설명',
+            fix: '먼저 한 문장으로 정의하거나 차이를 짚은 뒤 부연하세요.' },
+    num:  { re: /([0-9]|첫째|둘째|셋째|한 가지|두 가지|세 가지|하나는|둘은)/,
+            label: '구체적인 수치나 항목',
+            fix: '"세 가지가 있습니다", "주 3회" 처럼 숫자를 넣으면 훨씬 또렷하게 들립니다.' }
+  };
+
+  var FILLERS = ['음', '어', '그', '뭐', '좀', '막', '약간', '뭔가', '이제', '인제', '아'];
+
+  /** 마지막 글자의 받침 유무로 조사를 고른다. 한글이 아니면 받침 없는 쪽. */
+  function josa(word, withBatchim, without) {
+    var ch = word.charCodeAt(word.length - 1);
+    if (ch < 0xAC00 || ch > 0xD7A3) return without;
+    return ((ch - 0xAC00) % 28 !== 0) ? withBatchim : without;
+  }
+
+  /**
+   * @param {string} transcript 받아쓴 답변
+   * @param {object} item       질문 객체 (r: 채점 기준, g: 모범 답안 안내)
+   * @returns null 이면 분석할 만큼의 발화가 없었다는 뜻
+   */
+  function analyzeContent(transcript, item) {
+    if (!transcript) return null;
+    var flat = transcript.replace(/\s+/g, '');
+    if (flat.length < 10) return null;
+
+    var lower = transcript.toLowerCase();
+    var flatLower = flat.toLowerCase();
+    var rub = item && item.r;
+
+    // 1) 주제 적합도 — 핵심어가 하나도 없으면 동문서답으로 본다
+    var hit = [], miss = [];
+    if (rub && rub.k) {
+      rub.k.forEach(function (kw) {
+        (hasKeyword(flatLower, kw) ? hit : miss).push(kw);
+      });
+    }
+    // 자동 생성된 기준은 핵심어 수가 적고 질문 문장에서 뽑은 것이라 문턱을 낮춘다
+    var needHits = Math.min(rub && rub.derived ? 2 : 3, rub && rub.k ? rub.k.length : 0);
+    var topicScore = needHits
+      ? Math.min(100, Math.round((hit.length / needHits) * 100))
+      : null;
+
+    // 2) 필수 요소 충족 여부
+    var needs = [];
+    if (rub && rub.n) {
+      rub.n.forEach(function (code) {
+        var t = NEED_TEST[code];
+        if (t) needs.push({ code: code, ok: t.re.test(transcript), label: t.label, fix: t.fix });
+      });
+    }
+
+    // 3) 군더더기 — 독립된 어절로 나온 것만 센다
+    var tokens = transcript.trim().split(/\s+/);
+    var fillerCount = 0;
+    tokens.forEach(function (t) {
+      var w = t.replace(/[.,!?~…]/g, '');
+      if (FILLERS.indexOf(w) !== -1) fillerCount++;
+    });
+    var fillerRatio = tokens.length ? fillerCount / tokens.length : 0;
+
+    // 4) 같은 표현 반복
+    var freq = {}, repeated = null;
+    tokens.forEach(function (t) {
+      var w = t.replace(/[.,!?~…]/g, '');
+      if (w.length < 2 || FILLERS.indexOf(w) !== -1) return;
+      freq[w] = (freq[w] || 0) + 1;
+      if (freq[w] >= 4 && (!repeated || freq[w] > freq[repeated])) repeated = w;
+    });
+
+    return {
+      transcript: transcript,
+      chars: flat.length,
+      words: tokens.length,
+      topicScore: topicScore,
+      hit: hit, miss: miss,
+      needs: needs,
+      fillerCount: fillerCount,
+      fillerRatio: fillerRatio,
+      repeated: repeated,
+      repeatedCount: repeated ? freq[repeated] : 0
+    };
+  }
+
+  /** 내용 분석 → 문제점과 개선 방향 목록 */
+  function contentFeedback(c, item) {
+    var fb = [], push = function (lv, t, d) { fb.push({ lv: lv, t: t, d: d }); };
+    if (!c) return fb;
+
+    // 동문서답 — 가장 먼저, 가장 강하게 알린다
+    if (c.topicScore === 0) {
+      push('bad', '질문과 다른 내용을 답했습니다',
+        '이 질문에서 기대하는 내용(' + (item.r ? item.r.k.slice(0, 4).join(', ') : '') + ')이 답변에 전혀 나오지 않았습니다. ' +
+        '질문을 다시 읽고, 묻는 것 하나에만 정확히 답하세요. ' + (item.g || ''));
+    } else if (c.topicScore !== null && c.topicScore <= 34) {
+      push('warn', '질문의 핵심을 살짝 비껴갔습니다',
+        '관련된 이야기는 나왔지만 핵심어가 부족합니다. ' +
+        (c.miss.length ? '"' + c.miss.slice(0, 3).join('", "') + '" 같은 내용을 직접 언급해 보세요. ' : '') +
+        (item.g || ''));
+    } else if (c.topicScore !== null && c.topicScore >= 100) {
+      push('good', '질문에 정확히 답했습니다',
+        '핵심 내용(' + c.hit.slice(0, 3).join(', ') + ')이 모두 담겼습니다.');
+    }
+
+    // 빠진 필수 요소
+    c.needs.forEach(function (n) {
+      if (!n.ok) push('warn', n.label + josa(n.label, '이', '가') + ' 빠졌습니다', n.fix);
+    });
+
+    // 분량
+    if (c.chars < 60) {
+      push('bad', '답변이 너무 짧습니다',
+        '받아쓴 글자 수가 ' + c.chars + '자입니다. 면접 답변은 보통 150~300자 분량이 적당합니다. 근거나 사례를 한 가지 더 붙이세요.');
+    } else if (c.chars > 700) {
+      push('warn', '답변이 깁니다',
+        c.chars + '자를 말했습니다. 면접관이 집중하기 어렵습니다. 가장 강한 사례 하나만 남기고 줄이세요.');
+    }
+
+    // 군더더기
+    if (c.fillerRatio > 0.12 && c.fillerCount >= 4) {
+      push('warn', '군더더기 표현이 많습니다',
+        '"음", "어", "그" 같은 말이 ' + c.fillerCount + '번 나왔습니다. 말이 막힐 때는 소리를 내지 말고 잠깐 멈추는 편이 훨씬 안정돼 보입니다.');
+    }
+
+    // 반복
+    if (c.repeated && c.repeatedCount >= 5) {
+      push('warn', '같은 표현을 반복했습니다',
+        '"' + c.repeated + '"을(를) ' + c.repeatedCount + '번 사용했습니다. 비슷한 다른 표현으로 바꿔 보세요.');
+    }
+
+    return fb;
+  }
+
   /* ---------- 클립보드 ---------- */
   function copyText(text, okMsg) {
     var done = function () { toast(okMsg); buzz(10); };
@@ -3907,6 +4711,61 @@ input, textarea{ font:inherit; }
   $('btnRecs').addEventListener('click', function () {
     renderRecs();
     openSheet('sheetRecs');
+  });
+
+  /* 관리자 모드 — "승무원 면접" 5연타 (2초 안에 이어서 눌러야 한다) */
+  $('adminGate').addEventListener('click', function () {
+    var now = Date.now();
+    adminTaps = (now - adminTapAt < 2000) ? adminTaps + 1 : 1;
+    adminTapAt = now;
+    if (adminTaps >= 3 && adminTaps < 5) buzz(6);      // 다가갈수록 짧은 진동으로 알려 준다
+    if (adminTaps >= 5) { adminTaps = 0; buzz(20); openAdmin(); }
+  });
+
+  $('adminEnter').addEventListener('click', adminUnlock);
+  $('adminPw').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); adminUnlock(); }
+  });
+  $('adminPw').addEventListener('input', function () { $('adminErr').hidden = true; });
+
+  $('admLockAgain').addEventListener('click', function () {
+    adminOpen = false;
+    closeSheet('sheetAdmin');
+    toast('관리자 모드를 잠갔어요');
+  });
+
+  $('admCopy').addEventListener('click', function () {
+    var s = adminSnapshot();
+    recList().then(function (rows) { return rows; }).catch(function () { return []; }).then(function (rows) {
+      var lines = [
+        '승무원 면접 질문 뽑기 — 이용 기록 (이 기기 한정)',
+        '뽑은 시각: ' + fmtWhen(Date.now()),
+        '',
+        '[접속] 총 ' + (meta.visits || 0) + '회 · 누적 ' + fmtSpan(meta.activeMs) +
+          ' · 처음 ' + fmtWhen(meta.firstAt) + ' · 직전 ' + fmtWhen(prevVisitAt),
+        '[학습] 뽑기 ' + drawn + '회 · 답변함 ' + s.w.done + '/' + s.w.total +
+          ' · 못했음 ' + s.w.fail + ' · 달성률 ' + (s.w.total ? Math.round(s.w.done / s.w.total * 100) : 0) + '%',
+        '[평가] ' + exams.length + '회 · 평균 ' + (exams.length ? s.avg : '-') + ' · 최고 ' + (exams.length ? s.best : '-'),
+        '[녹음] ' + rows.length + '개 · ' + fmtBytes(rows.reduce(function (a, r) { return a + (r.size || 0); }, 0)),
+        '[환경] ' + browserName() + ' / ' + osName() + ' / ' + (canRecord ? '녹음가능' : '녹음불가'),
+        '',
+        '[취약 주제]'
+      ];
+      byTag().slice(0, 5).forEach(function (t) {
+        lines.push('  ' + t.tag + ' ' + t.done + '/' + t.total + ' (' + Math.round(t.done / t.total * 100) + '%)');
+      });
+      copyText(lines.join('\n'), '이용 기록을 복사했어요');
+    });
+  });
+
+  $('admWipe').addEventListener('click', function () {
+    if (!confirm('이 기기의 모든 기록을 지웁니다.\n답변 표기·통계·추가한 질문·녹음이 전부 삭제되며 되돌릴 수 없습니다.\n\n계속할까요?')) return;
+    Object.keys(K).forEach(function (k) { try { localStorage.removeItem(K[k]); } catch (e) {} });
+    recClear().catch(function () {}).then(function () {
+      buzz([40, 60, 40]);
+      alert('초기화했습니다. 페이지를 다시 불러옵니다.');
+      location.reload();
+    });
   });
 
   /* 마이크 권한 안내 */
@@ -4051,7 +4910,8 @@ input, textarea{ font:inherit; }
     renderCustomList();
     render();
     buzz(14);
-    toast('추가 완료 · 총 ' + custom.length + '개');
+    var d = deriveRubric(text);
+    toast('「' + d.typeName + '」 유형으로 분석했어요 · 총 ' + custom.length + '개');
     $('customList').parentElement.scrollTop = $('customList').scrollHeight;
   });
 
@@ -4070,7 +4930,7 @@ input, textarea{ font:inherit; }
   });
 
   // 시트 바깥 탭으로 닫기
-  ['sheetCustom', 'sheetFav', 'sheetShare', 'sheetLog', 'sheetStats', 'sheetRecs', 'sheetMic'].forEach(function (id) {
+  ['sheetCustom', 'sheetFav', 'sheetShare', 'sheetLog', 'sheetStats', 'sheetRecs', 'sheetMic', 'sheetAdmin'].forEach(function (id) {
     $(id).addEventListener('click', function (e) { if (e.target === $(id)) closeSheet(id); });
   });
 
@@ -4124,6 +4984,7 @@ input, textarea{ font:inherit; }
     if (!$('sheetStats').hidden)  { closeSheet('sheetStats'); return; }
     if (!$('sheetRecs').hidden)   { closeSheet('sheetRecs'); return; }
     if (!$('sheetMic').hidden)    { closeSheet('sheetMic'); return; }
+    if (!$('sheetAdmin').hidden)  { adminOpen = false; closeSheet('sheetAdmin'); return; }
     if (!$('exam').hidden && !exam.running) { closeExam(); return; }
     if (!stage.hidden)            { closeStage(); }
   });
