@@ -770,6 +770,22 @@ input, textarea{ font:inherit; }
 }
 .ansscript.is-empty{ font-style:normal; color:var(--fog-2); }
 
+.anspend{
+  display:flex; align-items:center; gap:9px;
+  padding:11px 13px; margin-bottom:9px;
+  border:1px solid color-mix(in srgb, var(--blue) 32%, transparent);
+  border-radius:var(--r-md);
+  background:color-mix(in srgb, var(--blue) 9%, transparent);
+  font-size:12.5px; color:var(--paper);
+}
+.anspend__spin{
+  width:15px; height:15px; flex:none; border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  border-top-color:var(--blue);
+  animation:spin 0.8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
 /* ---------- 관리자 모드 ---------- */
 .lockbox{ display:flex; flex-direction:column; align-items:center; gap:12px; padding:26px 0 16px; }
 .lockbox__icon{ width:46px; height:46px; color:var(--blue); }
@@ -1343,6 +1359,7 @@ input, textarea{ font:inherit; }
       <div class="chips" id="anMode">
         <button class="chip" data-mode="both">녹음 + 받아쓰기</button>
         <button class="chip" data-mode="stt">받아쓰기만</button>
+        <button class="chip" data-mode="precise">녹음 + 정밀 분석</button>
       </div>
       <p class="prefs__note" id="anModeNote"></p>
     </div>
@@ -1573,6 +1590,7 @@ input, textarea{ font:inherit; }
         <div class="chips" id="exMode">
           <button class="chip" data-mode="both" aria-pressed="true">녹음 + 받아쓰기</button>
           <button class="chip" data-mode="stt">받아쓰기만</button>
+          <button class="chip" data-mode="precise">녹음 + 정밀 분석</button>
         </div>
         <p class="prefs__note" id="exModeNote"></p>
       </div>
@@ -1665,6 +1683,10 @@ input, textarea{ font:inherit; }
     </div>
     <div class="sheet__body">
       <p class="ansq" id="ansQ"></p>
+      <div class="anspend" id="ansPending" hidden>
+        <span class="anspend__spin"></span>
+        <span id="ansPendingTxt">분석 중…</span>
+      </div>
       <div class="ansscript" id="ansScript"></div>
 
       <h3 class="subhead">답변 내용 <em>· 무엇을 말했는가</em></h3>
@@ -2651,15 +2673,18 @@ input, textarea{ font:inherit; }
     document.querySelectorAll('#anMode .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(c.dataset.mode === anMode));
     });
-    $('anModeNote').textContent = anMode === 'stt'
-      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 확실히 되는 대신, 녹음 파일과 목소리 분석은 남지 않습니다.'
-      : '녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나오면 「받아쓰기만」으로 바꾸세요.';
+    $('anModeNote').innerHTML = anMode === 'stt'
+      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 확실히 되는 대신, <b>녹음 파일과 목소리 분석은 남지 않습니다.</b>'
+      : anMode === 'precise'
+      ? '<b>녹음과 답변 내용 분석을 모두</b> 얻습니다. 녹음을 마친 뒤 기기 안에서 처리하므로 충돌이 없습니다. ' +
+        '처음 한 번 <b>약 40MB</b>를 내려받고(Wi-Fi 권장), 분석에 답변 길이의 <b>2~4배</b> 시간이 걸립니다.'
+      : '녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나오면 <b>「녹음 + 정밀 분석」</b>으로 바꾸세요.';
     if (!$('sheetAnswer')) return;
     syncRecBtn(!!(rec && rec.isActive()));
   }
 
   function setAnMode(m) {
-    anMode = (m === 'stt') ? 'stt' : 'both';
+    anMode = (m === 'stt' || m === 'precise') ? m : 'both';
     save(K.anmode, anMode);
     exam.mode = anMode;          // 실전평가 기본값도 함께 맞춘다
     syncAnMode();
@@ -3578,11 +3603,13 @@ input, textarea{ font:inherit; }
     rec.start().then(function () {
       syncRecBtn(true);
       buzz(20);
-      toast(canTranscribe ? '녹음 중 — 다시 누르면 분석해 드려요' : '녹음 중 — 다시 누르면 저장됩니다');
+      toast(anMode === 'precise' ? '녹음 중 — 정지하면 기기에서 분석합니다'
+          : canTranscribe ? '녹음 중 — 다시 누르면 분석해 드려요'
+          : '녹음 중 — 다시 누르면 저장됩니다');
 
-      // 녹음이 자리를 잡은 뒤에 받아쓰기를 붙인다.
-      // 반대 순서면 녹음이 마이크를 가져가 인식이 소리를 못 받는다.
-      setTimeout(function () { if (rec) attachStt(); }, 400);
+      // 정밀 모드는 녹음이 끝난 뒤 파일을 처리하므로 실시간 인식을 붙이지 않는다.
+      // 그 외에는 녹음이 자리를 잡은 뒤에 붙인다 (반대 순서면 소리를 못 받는다).
+      if (anMode !== 'precise') setTimeout(function () { if (rec) attachStt(); }, 400);
     }).catch(function (e) {
       if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
@@ -3635,8 +3662,35 @@ input, textarea{ font:inherit; }
         refreshRecCount();
         buzz(14);
         showAnswerReport(item, transcript, res.metrics, res.durationMs, sttDiag);
+
+        // 정밀 모드 — 녹음이 끝난 지금 파일을 분석해 결과를 채워 넣는다
+        if (anMode === 'precise') {
+          setAnsPending(true, '모델 준비 중…');
+          enqueueTranscribe(res.blob, item && item.t === '영어' ? 'en' : 'ko', function (text, err) {
+            setAnsPending(false);
+            if (err) { $('ansScript').className = 'ansscript is-empty';
+                       $('ansScript').textContent = '정밀 분석에 실패했습니다 (' + err + ')'; return; }
+            meta.transcript = text;
+            recAdd(meta, res.blob).catch(function () {});   // 받아쓴 내용을 녹음함에도 남긴다
+            showAnswerReport(item, text, res.metrics, res.durationMs, null);
+          });
+        }
       });
     }).catch(function () { toast('녹음을 저장하지 못했어요'); });
+  }
+
+  function setAnsPending(on, label) {
+    $('ansPending').hidden = !on;
+    if (label) $('ansPendingTxt').textContent = label;
+    if (on) {
+      // 모델 내려받는 동안 진행률을 보여 준다
+      var tick = setInterval(function () {
+        if ($('ansPending').hidden) { clearInterval(tick); return; }
+        $('ansPendingTxt').textContent = whisperReady()
+          ? '답변을 분석하는 중… (답변 길이의 2~4배 걸립니다)'
+          : '음성인식 모델 준비 중… ' + whisperProg + '%';
+      }, 500);
+    }
   }
 
   /** 녹음을 마치면 그 자리에서 내용·목소리 분석을 보여 준다 */
@@ -3943,8 +3997,10 @@ input, textarea{ font:inherit; }
       c.setAttribute('aria-pressed', String(c.dataset.mode === exam.mode));
     });
     $('exModeNote').textContent = exam.mode === 'stt'
-      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 가장 확실하지만, 녹음 파일과 목소리 분석은 남지 않습니다.'
-      : '답변을 녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나올 수 있으며, 그럴 때 「받아쓰기만」으로 바꾸면 해결됩니다.';
+      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석은 확실하지만, 녹음 파일과 목소리 분석은 남지 않습니다.'
+      : exam.mode === 'precise'
+      ? '녹음과 답변 내용 분석을 모두 얻습니다. 다음 문항에 답하는 동안 뒤에서 분석하므로 기다림이 거의 없습니다. 처음 한 번 약 40MB를 내려받습니다.'
+      : '녹음하면서 동시에 받아씁니다. 기기에 따라 충돌해 받아쓰기가 비어 나오면 「녹음 + 정밀 분석」으로 바꾸세요.';
     $('exTotal').textContent = examTotalLabel();
 
     var note = $('exMicNote');
@@ -4064,7 +4120,8 @@ input, textarea{ font:inherit; }
       }).then(function () {
         $('exMeter').hidden = false;
         $('exMeterCap').textContent = '녹음 중';
-        setTimeout(startStt, 400);
+        // 정밀 모드는 끝난 뒤 파일을 처리하므로 실시간 인식을 붙이지 않는다
+        if (exam.mode !== 'precise') setTimeout(startStt, 400);
       }).catch(function (e) {
         exam.rec = null;
         $('exMeter').hidden = true;
@@ -4125,6 +4182,23 @@ input, textarea{ font:inherit; }
           metrics: metrics, transcript: transcript || '', exam: true
         };
         recAdd(meta, blobInfo.blob).then(refreshRecCount).catch(function () {});
+
+        // 정밀 모드 — 다음 문항에 답하는 동안 뒤에서 분석해 둔다.
+        // 그래서 결과 화면에 도착할 즈음이면 대부분 끝나 있다.
+        if (exam.mode === 'precise') {
+          var slot = exam.results[exam.results.length - 1];
+          slot.pending = true;
+          enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
+            slot.pending = false;
+            slot.sttErr = err || '';
+            if (text) {
+              slot.content = analyzeContent(text, item);
+              meta.transcript = text;
+              recAdd(meta, blobInfo.blob).catch(function () {});
+            }
+            if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
+          });
+        }
       }
       exam.idx++;
       finishing = false;
@@ -4151,6 +4225,79 @@ input, textarea{ font:inherit; }
   /* 진행 중 화면에서 답변을 마칠 때 잠깐 대기가 생기는 것을 알려 준다 */
   function markFinishing() {
     $('exNextLabel').textContent = '정리 중…';
+  }
+
+  /** 답변 내용 영역. 정밀 모드에서는 분석이 끝날 때마다 다시 불린다. */
+  function renderExamContent() {
+    var cul = $('exContent');
+    cul.innerHTML = '';
+    $('exContentWrap').hidden = false;
+
+    var pending = exam.results.filter(function (r) { return r.pending; }).length;
+    if (pending) {
+      var lp = document.createElement('li');
+      lp.className = 'is-warn';
+      lp.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+      lp.querySelector('.fb__t').textContent = '분석 중 — 남은 문항 ' + pending + '개';
+      lp.querySelector('.fb__d').textContent = whisperReady()
+        ? '기기 안에서 답변을 글로 옮기는 중입니다. 끝나는 대로 이 화면이 자동으로 채워집니다.'
+        : '음성인식 모델을 준비하는 중입니다 (' + whisperProg + '%). 처음 한 번만 걸립니다.';
+      cul.appendChild(lp);
+    }
+
+    var withText = exam.results.filter(function (r) { return r.content; });
+
+    if (withText.length === 0 && !pending) {
+      var lastDiag = null, lastErr = '';
+      for (var di = exam.results.length - 1; di >= 0; di--) {
+        if (exam.results[di].sttDiag) { lastDiag = exam.results[di].sttDiag; break; }
+      }
+      exam.results.forEach(function (r) { if (r.sttErr) lastErr = r.sttErr; });
+
+      var li0 = document.createElement('li');
+      li0.className = 'is-warn';
+      li0.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+      li0.querySelector('.fb__t').textContent = '답변을 받아쓰지 못했습니다';
+      li0.querySelector('.fb__d').textContent = lastErr
+        ? ('정밀 분석에 실패했습니다 — ' + lastErr)
+        : sttReason(lastDiag);
+      cul.appendChild(li0);
+
+      // 녹음과 함께 돌리다 실패한 경우, 해결책을 제시한다
+      if (exam.mode === 'both' && canTranscribe) {
+        var li1 = document.createElement('li');
+        li1.className = 'is-bad';
+        li1.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+        li1.querySelector('.fb__t').textContent = '해결 방법 — 「녹음 + 정밀 분석」으로 바꾸세요';
+        li1.querySelector('.fb__d').textContent =
+          '이 기기는 녹음과 실시간 음성인식을 동시에 쓰지 못합니다. ' +
+          '설정에서 「녹음 + 정밀 분석」을 고르면 녹음을 마친 뒤 기기 안에서 분석하므로 ' +
+          '녹음 파일과 답변 내용 분석을 모두 얻을 수 있습니다.';
+        cul.appendChild(li1);
+      }
+      return;
+    }
+
+    withText.forEach(function (r, i) {
+      var head = document.createElement('li');
+      head.className = 'qhead';
+      head.innerHTML = '<span class="fb__t"></span><span class="fb__d qscript"></span>';
+      head.querySelector('.fb__t').textContent = (i + 1) + '. ' + r.item.q;
+      head.querySelector('.qscript').textContent = '“' + r.content.transcript + '”';
+      cul.appendChild(head);
+
+      var fbs = contentFeedback(r.content, r.item);
+      var order = { bad: 0, warn: 1, good: 2 };
+      fbs.sort(function (a, b) { return order[a.lv] - order[b.lv]; });
+      fbs.slice(0, 4).forEach(function (f) {
+        var li = document.createElement('li');
+        li.className = 'is-' + f.lv + ' sub';
+        li.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
+        li.querySelector('.fb__t').textContent = f.t;
+        li.querySelector('.fb__d').textContent = f.d;
+        cul.appendChild(li);
+      });
+    });
   }
 
   function showReport() {
@@ -4241,59 +4388,7 @@ input, textarea{ font:inherit; }
       save(K.exams, exams);
     }
 
-    // ── 답변 내용 피드백 (문항별로 묶어서 보여 준다)
-    var wrap = $('exContentWrap'), cul = $('exContent');
-    cul.innerHTML = '';
-    var withText = exam.results.filter(function (r) { return r.content; });
-
-    if (withText.length === 0) {
-      // 마지막 진단 정보로 '왜' 실패했는지 구체적으로 알려 준다
-      var lastDiag = null;
-      for (var di = exam.results.length - 1; di >= 0; di--) {
-        if (exam.results[di].sttDiag) { lastDiag = exam.results[di].sttDiag; break; }
-      }
-      var li0 = document.createElement('li');
-      li0.className = 'is-warn';
-      li0.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-      li0.querySelector('.fb__t').textContent = '답변을 받아쓰지 못했습니다';
-      li0.querySelector('.fb__d').textContent = sttReason(lastDiag);
-      cul.appendChild(li0);
-
-      // 녹음과 함께 돌리다 실패한 경우, 해결책을 바로 제시한다
-      if (exam.mode !== 'stt' && canTranscribe) {
-        var li1 = document.createElement('li');
-        li1.className = 'is-bad';
-        li1.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-        li1.querySelector('.fb__t').textContent = '해결 방법 — 「받아쓰기만」으로 바꿔 보세요';
-        li1.querySelector('.fb__d').textContent =
-          '이 기기는 녹음과 음성인식을 동시에 쓰지 못하는 것으로 보입니다. ' +
-          '「다시 하기」 → 설정 화면의 분석 방식에서 「받아쓰기만」을 고르면 답변 내용 분석이 정상 동작합니다. ' +
-          '대신 그 모드에서는 녹음 파일이 남지 않습니다.';
-        cul.appendChild(li1);
-      }
-    } else {
-      withText.forEach(function (r, i) {
-        var head = document.createElement('li');
-        head.className = 'qhead';
-        head.innerHTML = '<span class="fb__t"></span><span class="fb__d qscript"></span>';
-        head.querySelector('.fb__t').textContent = (i + 1) + '. ' + r.item.q;
-        head.querySelector('.qscript').textContent = '“' + r.content.transcript + '”';
-        cul.appendChild(head);
-
-        var fbs = contentFeedback(r.content, r.item);
-        var order = { bad: 0, warn: 1, good: 2 };
-        fbs.sort(function (a, b) { return order[a.lv] - order[b.lv]; });
-        fbs.slice(0, 4).forEach(function (f) {
-          var li = document.createElement('li');
-          li.className = 'is-' + f.lv + ' sub';
-          li.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-          li.querySelector('.fb__t').textContent = f.t;
-          li.querySelector('.fb__d').textContent = f.d;
-          cul.appendChild(li);
-        });
-      });
-    }
-    wrap.hidden = false;
+    renderExamContent();
 
     // 문항별 기록
     $('exPerQ').innerHTML = '';
@@ -4820,6 +4915,90 @@ input, textarea{ font:inherit; }
         });
       }
     };
+  }
+
+  /* ============================================================
+     정밀 받아쓰기 (기기 안에서 도는 Whisper)
+     녹음이 끝난 파일을 나중에 처리하므로 마이크를 두고 다투지 않는다.
+     그래서 녹음과 답변 내용 분석을 동시에 얻을 수 있다.
+     대신 모델을 한 번 내려받아야 하고, 처리에 시간이 걸린다.
+     ============================================================ */
+  var WHISPER_LIB   = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5';
+  var WHISPER_MODEL = 'onnx-community/whisper-tiny';
+
+  var whisper = null, whisperLoading = null, whisperProg = 0;
+  var whisperQueue = [], whisperBusy = false;
+
+  function whisperReady() { return !!whisper; }
+
+  /** 모델을 준비한다. 이미 받아 뒀으면 캐시에서 즉시 올라온다. */
+  function loadWhisper(onProgress) {
+    if (whisper) return Promise.resolve(whisper);
+    if (whisperLoading) return whisperLoading;
+
+    whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
+      mod.env.allowLocalModels = false;
+      return mod.pipeline('automatic-speech-recognition', WHISPER_MODEL, {
+        dtype: 'q8',
+        device: 'wasm',
+        progress_callback: function (p) {
+          if (p && p.status === 'progress' && p.total) {
+            whisperProg = Math.round((p.loaded / p.total) * 100);
+            if (onProgress) onProgress(whisperProg);
+          }
+        }
+      });
+    }).then(function (pipe) {
+      whisper = pipe; whisperLoading = null; whisperProg = 100;
+      if (onProgress) onProgress(100);
+      return pipe;
+    }).catch(function (e) {
+      whisperLoading = null;
+      throw e;
+    });
+    return whisperLoading;
+  }
+
+  /** 녹음 파일 → 16kHz 모노 PCM. Whisper 가 요구하는 형식이다. */
+  function blobToPcm16k(blob) {
+    return blob.arrayBuffer().then(function (buf) {
+      var ac = new (window.AudioContext || window.webkitAudioContext)();
+      return ac.decodeAudioData(buf).then(function (decoded) {
+        try { ac.close(); } catch (e) {}
+        var off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * 16000)), 16000);
+        var src = off.createBufferSource();
+        src.buffer = decoded;
+        src.connect(off.destination);
+        src.start();
+        return off.startRendering();
+      }).then(function (rendered) { return rendered.getChannelData(0); });
+    });
+  }
+
+  /** 한 번에 하나씩만 돌린다. 동시에 돌리면 느린 기기가 멈춘다. */
+  function enqueueTranscribe(blob, lang, onDone) {
+    whisperQueue.push({ blob: blob, lang: lang, onDone: onDone });
+    pumpWhisper();
+  }
+
+  function pumpWhisper() {
+    if (whisperBusy || !whisperQueue.length) return;
+    whisperBusy = true;
+    var job = whisperQueue.shift();
+
+    loadWhisper()
+      .then(function () { return blobToPcm16k(job.blob); })
+      .then(function (pcm) {
+        return whisper(pcm, {
+          language: job.lang === 'en' ? 'english' : 'korean',
+          task: 'transcribe',
+          chunk_length_s: 30,
+          stride_length_s: 5
+        });
+      })
+      .then(function (r) { job.onDone((r && r.text ? r.text : '').trim(), null); })
+      .catch(function (e) { job.onDone('', String(e && e.message || e).slice(0, 120)); })
+      .then(function () { whisperBusy = false; pumpWhisper(); });
   }
 
   /** 진단 정보 → 사람이 읽을 수 있는 실패 원인 */
