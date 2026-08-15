@@ -1338,6 +1338,15 @@ input, textarea{ font:inherit; }
       <span class="muted" id="logHint">0 / 0</span>
     </button>
 
+    <div class="exsrc" id="anModeBox">
+      <span class="exrow__label">답변 분석 방식</span>
+      <div class="chips" id="anMode">
+        <button class="chip" data-mode="both">녹음 + 받아쓰기</button>
+        <button class="chip" data-mode="stt">받아쓰기만</button>
+      </div>
+      <p class="prefs__note" id="anModeNote"></p>
+    </div>
+
     <button class="linkrow" id="btnRecs">
       녹음함
       <span class="muted" id="recHint">0개</span>
@@ -2329,7 +2338,8 @@ input, textarea{ font:inherit; }
     status:   'ccq.status.v2',     // { 질문문장: 'done' | 'fail' }
     onlyTodo: 'ccq.onlytodo.v1',
     exams:    'ccq.exams.v1',
-    meta:     'ccq.meta.v1'
+    meta:     'ccq.meta.v1',
+    anmode:   'ccq.anmode.v1'
   };
 
   function load(key, fallback) {
@@ -2353,6 +2363,9 @@ input, textarea{ font:inherit; }
   // 그래서 1번에서 체크한 질문은 3·4번에서 만나도 같은 상태로 보인다.
   var status   = load(K.status, null);      // { 질문: 'done' | 'fail' }
   var onlyTodo = load(K.onlyTodo, false);   // 아직 답변 안 한 것만 뽑기
+  // 'both' = 녹음과 받아쓰기 동시, 'stt' = 받아쓰기만 (마이크를 공유하지 못하는 기기용)
+  var anMode  = load(K.anmode, 'both');
+  if (anMode !== 'stt') anMode = 'both';
   var exams    = load(K.exams, []);         // 실전평가 결과 이력
 
   // v1(단순 완료 배열) → v2(상태 객체) 1회 이관
@@ -2629,7 +2642,29 @@ input, textarea{ font:inherit; }
       c.setAttribute('aria-pressed', String(Number(c.dataset.sec) === sec));
     });
     syncDial();
+    syncAnMode();
     if (!timerId) $('timerLabel').textContent = fmtClock(sec);
+  }
+
+  /* ---------- 분석 방식 (앱 전체 공통) ---------- */
+  function syncAnMode() {
+    document.querySelectorAll('#anMode .chip').forEach(function (c) {
+      c.setAttribute('aria-pressed', String(c.dataset.mode === anMode));
+    });
+    $('anModeNote').textContent = anMode === 'stt'
+      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 확실히 되는 대신, 녹음 파일과 목소리 분석은 남지 않습니다.'
+      : '녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나오면 「받아쓰기만」으로 바꾸세요.';
+    if (!$('sheetAnswer')) return;
+    syncRecBtn(!!(rec && rec.isActive()));
+  }
+
+  function setAnMode(m) {
+    anMode = (m === 'stt') ? 'stt' : 'both';
+    save(K.anmode, anMode);
+    exam.mode = anMode;          // 실전평가 기본값도 함께 맞춘다
+    syncAnMode();
+    if (!$('exam').hidden) syncExamSetup();
+    buzz(8);
   }
 
   /* ---------- 답변 시간 다이얼 ---------- */
@@ -3499,7 +3534,7 @@ input, textarea{ font:inherit; }
   }
 
   /* ---------- 녹음 조작 ---------- */
-  var rec = null, recCount = 0, recStt = null, recItem = null;
+  var rec = null, recCount = 0, recStt = null, recItem = null, recOnlyStt = false;
 
   function fmtDate(ms) {
     var d = new Date(ms);
@@ -3509,7 +3544,7 @@ input, textarea{ font:inherit; }
 
   function syncRecBtn(on) {
     $('btnRec').setAttribute('aria-pressed', String(on));
-    $('recLabel').textContent = on ? '정지' : '녹음';
+    $('recLabel').textContent = on ? '정지' : (anMode === 'stt' ? '받아쓰기' : '녹음');
   }
 
   function startRec() {
@@ -3520,6 +3555,25 @@ input, textarea{ font:inherit; }
     recItem = current;
     recStt = null;
 
+    var attachStt = function () {
+      if (!canTranscribe || !recItem) return;
+      var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
+      if (t.start()) recStt = t;
+    };
+
+    // 받아쓰기만 모드 — 녹음하지 않아 인식이 마이크를 독점한다
+    if (anMode === 'stt') {
+      if (!canTranscribe) { toast('이 브라우저는 받아쓰기를 지원하지 않아요'); return; }
+      recOnlyStt = true;
+      attachStt();
+      if (!recStt) { toast('받아쓰기를 시작하지 못했어요'); return; }
+      syncRecBtn(true);
+      buzz(20);
+      toast('받아쓰는 중 — 다시 누르면 분석해 드려요');
+      return;
+    }
+
+    recOnlyStt = false;
     rec = createRecorder();
     rec.start().then(function () {
       syncRecBtn(true);
@@ -3528,11 +3582,7 @@ input, textarea{ font:inherit; }
 
       // 녹음이 자리를 잡은 뒤에 받아쓰기를 붙인다.
       // 반대 순서면 녹음이 마이크를 가져가 인식이 소리를 못 받는다.
-      setTimeout(function () {
-        if (!rec || !canTranscribe || !recItem) return;
-        var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
-        if (t.start()) recStt = t;
-      }, 400);
+      setTimeout(function () { if (rec) attachStt(); }, 400);
     }).catch(function (e) {
       if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
@@ -3548,15 +3598,27 @@ input, textarea{ font:inherit; }
   }
 
   function stopRec() {
-    if (!rec) return;
+    if (!rec && !recOnlyStt) return;
     var item = recItem || current;
     var q = item ? item.q : '', tag = item ? item.t : '';
-    var r = rec; rec = null;
-    syncRecBtn(false);
 
     var sttDiag = recStt ? recStt.diag() : null;
     var sttP = recStt ? recStt.stop() : Promise.resolve('');
     recStt = null;
+
+    // 받아쓰기만 모드 — 저장할 오디오가 없으니 바로 분석 결과를 보여 준다
+    if (recOnlyStt) {
+      recOnlyStt = false;
+      syncRecBtn(false);
+      sttP.then(function (transcript) {
+        buzz(14);
+        showAnswerReport(item, transcript || '', null, 0, sttDiag);
+      });
+      return;
+    }
+
+    var r = rec; rec = null;
+    syncRecBtn(false);
 
     Promise.all([r.stop(), sttP]).then(function (arr) {
       var res = arr[0], transcript = arr[1] || '';
@@ -3617,8 +3679,11 @@ input, textarea{ font:inherit; }
       '분석할 만큼의 답변이 인식되지 않았습니다.');
 
     paint($('ansVoice'), metrics ? feedbackOf(metrics, axesOf(metrics), durMs / 1000) : [],
-      '목소리를 분석할 만큼 길게 말하지 않았습니다.');
+      anMode === 'stt'
+        ? '「받아쓰기만」 모드에서는 녹음을 하지 않아 목소리를 분석하지 않습니다. 톤·강세까지 보시려면 설정에서 「녹음 + 받아쓰기」로 바꾸세요.'
+        : '목소리를 분석할 만큼 길게 말하지 않았습니다.');
 
+    $('ansToRecs').hidden = (anMode === 'stt');
     openSheet('sheetAnswer');
   }
 
@@ -3754,7 +3819,7 @@ input, textarea{ font:inherit; }
      실전 모의평가
      ============================================================ */
   var exam = {
-    n: 3, per: 80, scope: 'all', mode: 'both',
+    n: 3, per: 80, scope: 'all', mode: anMode,
     list: [], idx: 0, results: [],
     rec: null, stt: null, tId: null, endAt: 0, running: false
   };
@@ -4985,9 +5050,14 @@ input, textarea{ font:inherit; }
     var c = e.target.closest('.chip'); if (!c) return;
     exam.scope = c.dataset.scope; syncExamSetup(); buzz(8);
   });
+  // 실전평가와 하단 설정은 같은 값을 공유한다
   $('exMode').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
-    exam.mode = c.dataset.mode; syncExamSetup(); buzz(8);
+    setAnMode(c.dataset.mode);
+  });
+  $('anMode').addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    setAnMode(c.dataset.mode);
   });
 
   $('btnTip').addEventListener('click', toggleTip);
@@ -5287,7 +5357,9 @@ input, textarea{ font:inherit; }
   /* ---------- 시작 ---------- */
   $('qrUrl').textContent = APP_URL;
   // 녹음이 안 되는 환경에서도 버튼은 살려 둔다. 누르면 이유와 해결법을 보여 준다.
+  // 녹음이 아예 안 되는 환경이면 분석 방식 선택은 의미가 없다
   if (!canRecord) {
+    $('anModeBox').hidden = true;
     $('recNote').innerHTML = frameBlocksMic
       ? '이 화면은 <strong>마이크를 쓸 수 없는 형태</strong>로 실행 중이라 녹음이 되지 않습니다. 폰 설정 문제가 아닙니다 — 아래 「마이크 권한」에서 자세한 이유를 확인하세요.'
       : '이 브라우저에서는 <strong>녹음을 쓸 수 없습니다.</strong> 아래 「마이크 권한」에서 이유를 확인하세요.';
