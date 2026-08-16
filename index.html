@@ -1402,8 +1402,8 @@ input, textarea{ font:inherit; }
           <span class="modelbox__v" id="modelState">확인 중…</span>
         </div>
         <div class="chips" id="wModel">
-          <button class="chip" data-w="base">가벼움 80MB</button>
-          <button class="chip" data-w="small">정확 250MB</button>
+          <button class="chip" data-w="base">가벼움 160MB</button>
+          <button class="chip" data-w="small">정확 470MB</button>
         </div>
         <p class="prefs__note" id="wModelNote"></p>
         <div class="modelbox__track" id="modelTrack" hidden>
@@ -2771,7 +2771,9 @@ input, textarea{ font:inherit; }
       // 얼마나 받았고 얼마나 더 기다려야 하는지 알려 준다
       $('modelEta').hidden = false;
       if (initing) {
-        $('modelEta').textContent = '내려받기 완료 · 사용 준비 중 (보통 10~60초, 이때 진행률은 멈춰 보입니다)';
+        var initSec = Math.round((Date.now() - whisperInitAt) / 1000);
+        $('modelEta').textContent = '내려받기 완료 · 사용 준비 중 ' + initSec + '초 경과'
+          + ' (진행률이 멈춘 것처럼 보이는 게 정상입니다)';
       } else if (whisperBytes) {
         var got = fmtBytes(whisperBytes.loaded), all = fmtBytes(whisperBytes.total);
         var spd = whisperSpeed ? ' · ' + fmtBytes(whisperSpeed) + '/s' : '';
@@ -3824,7 +3826,8 @@ input, textarea{ font:inherit; }
       }
       if (!whisperReady()) {                            // 모델 준비 단계
         if (whisperPhase === 'init') {
-          $('ansPendingTxt').textContent = '모델을 기기에 올리는 중… (10~60초)';
+          $('ansPendingTxt').textContent = '모델을 기기에 올리는 중 · '
+            + Math.round((Date.now() - whisperInitAt) / 1000) + '초 경과';
           $('ansPendingPct').textContent = '';
           $('ansPendingBar').style.width = '100%';
         } else {
@@ -5059,14 +5062,16 @@ input, textarea{ font:inherit; }
   /* tiny 는 한국어 정확도가 크게 떨어져 기본에서 제외했다.
      base 를 기본으로 쓰고, 더 정확한 small 을 선택지로 둔다. */
   var WHISPER_MODELS = {
-    base:  { id: 'onnx-community/whisper-base',           label: '가벼움', mb: 80,   note: '데이터가 부담될 때' },
-    small: { id: 'onnx-community/whisper-small',          label: '정확',   mb: 250,  note: '권장 — 한국어 인식이 가장 안정적입니다' }
+    base:  { id: 'onnx-community/whisper-base',  label: '가벼움', mb: 160, note: '데이터가 부담될 때 · 인식은 다소 떨어집니다' },
+    small: { id: 'onnx-community/whisper-small', label: '정확',   mb: 470, note: '권장 — 한국어 인식이 확실히 낫습니다' }
   };
 
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
   var whisperPhase = '';   // 'download' | 'init'
   var whisperBytes = null, whisperSpeed = 0, whisperEta = 0, whisperStartAt = 0;
   var whisperInit = 0, whisperDone = 0;   // 시작한 파일 수 / 끝난 파일 수
+  var whisperInitAt = 0;                  // '기기에 올리는 중' 이 시작된 시각
+  var whisperLastProg = 0;                // 마지막 내려받기 신호 시각
   var wModel = load(K.wmodel, 'small');
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
@@ -5093,6 +5098,20 @@ input, textarea{ font:inherit; }
     whisperBytes = null; whisperSpeed = 0; whisperEta = 0;
     whisperInit = 0; whisperDone = 0;
     whisperStartAt = Date.now();
+    whisperLastProg = Date.now();
+
+    // 마지막 파일이 끝난 뒤에는 신호가 오지 않으므로, 따로 확인해 단계를 넘긴다
+    var phaseWatch = setInterval(function () {
+      if (!whisperLoading) { clearInterval(phaseWatch); return; }
+      if (whisperPhase === 'init') return;
+      if (whisperInit >= 2 && whisperDone >= whisperInit &&
+          whisperBytes && whisperBytes.loaded >= whisperBytes.total * 0.999 &&
+          (Date.now() - whisperLastProg) > 1500) {
+        whisperPhase = 'init';
+        whisperInitAt = Date.now();
+        whisperEta = 0;
+      }
+    }, 500);
     whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
       mod.env.allowLocalModels = false;
 
@@ -5122,10 +5141,16 @@ input, textarea{ font:inherit; }
           if (p.status === 'initiate') whisperInit++;
           if (p.status === 'done') whisperDone++;
 
-          var allFetched = whisperInit > 0 && whisperDone >= whisperInit &&
-                           (!whisperBytes || whisperBytes.loaded >= whisperBytes.total * 0.999);
-          if (p.status === 'ready' || allFetched) {
+          if (p.status === 'progress') whisperLastProg = Date.now();
+
+          // 파일 목록이 한꺼번에 오지 않아서, 초반에 1개만 끝나도 조건이 맞아 버린다.
+          // 내려받기 신호가 한동안 끊긴 뒤에야 진짜로 다 받은 것으로 본다.
+          var allFetched = whisperInit >= 2 && whisperDone >= whisperInit &&
+                           whisperBytes && whisperBytes.loaded >= whisperBytes.total * 0.999 &&
+                           (Date.now() - whisperLastProg) > 1500;
+          if ((p.status === 'ready' || allFetched) && whisperPhase !== 'init') {
             whisperPhase = 'init';
+            whisperInitAt = Date.now();
             whisperEta = 0;
           }
           if (p.status === 'initiate' || p.status === 'done' || p.status === 'ready') {
