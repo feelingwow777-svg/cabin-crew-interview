@@ -1402,8 +1402,8 @@ input, textarea{ font:inherit; }
           <span class="modelbox__v" id="modelState">확인 중…</span>
         </div>
         <div class="chips" id="wModel">
-          <button class="chip" data-w="base">가벼움 160MB</button>
-          <button class="chip" data-w="small">정확 470MB</button>
+          <button class="chip" data-w="base">가벼움</button>
+          <button class="chip" data-w="small">정확</button>
         </div>
         <p class="prefs__note" id="wModelNote"></p>
         <div class="modelbox__track" id="modelTrack" hidden>
@@ -1418,6 +1418,15 @@ input, textarea{ font:inherit; }
           받아둔 모델 삭제
           <span class="muted" id="modelUsage">—</span>
         </button>
+        <div class="exsrc" style="margin-top:2px">
+          <span class="exrow__label">처리 방식</span>
+          <div class="chips" id="wDevice">
+            <button class="chip" data-d="auto">자동</button>
+            <button class="chip" data-d="gpu">GPU · 빠름</button>
+            <button class="chip" data-d="cpu">CPU · 안정</button>
+          </div>
+          <p class="prefs__note" id="wDeviceNote"></p>
+        </div>
       </div>
     </div>
 
@@ -2415,7 +2424,8 @@ input, textarea{ font:inherit; }
     anmode:   'ccq.anmode.v1',
     wmodel:   'ccq.wmodel.v1',
     forcecpu: 'ccq.forcecpu.v1',
-    wdone:    'ccq.wdone.v1'
+    wdone:    'ccq.wdone.v1',
+    wdevice:  'ccq.wdevice.v1'
   };
 
   function load(key, fallback) {
@@ -2746,12 +2756,32 @@ input, textarea{ font:inherit; }
     var m = WHISPER_MODELS[wModel];
     $('modelEta').hidden = true;
 
+    // 이 기기가 실제로 어느 쪽을 받게 되는지
+    var gpu = willUseGpu();
+    var mb = gpu ? m.gpuMb : m.cpuMb;
+
     document.querySelectorAll('#wModel .chip').forEach(function (c) {
+      var mm = WHISPER_MODELS[c.dataset.w];
+      c.textContent = mm.label + ' ' + (gpu ? mm.gpuMb : mm.cpuMb) + 'MB';
       c.setAttribute('aria-pressed', String(c.dataset.w === wModel));
       c.disabled = !!whisperLoading;
     });
-    $('wModelNote').textContent = m.note + (wModel === 'turbo'
-      ? ' · 저사양 폰에서는 실패할 수 있습니다' : '');
+    $('wModelNote').textContent = m.note;
+
+    // 처리 방식
+    document.querySelectorAll('#wDevice .chip').forEach(function (c) {
+      c.setAttribute('aria-pressed', String(c.dataset.d === wDevice));
+      c.disabled = !!whisperLoading || (c.dataset.d === 'gpu' && !navigator.gpu);
+    });
+    $('wDeviceNote').textContent = !navigator.gpu
+      ? '이 기기는 GPU 가속을 지원하지 않아 CPU 로만 처리합니다.'
+      : wDevice === 'gpu'
+        ? 'GPU 로 처리합니다. 훨씬 빠르지만 일부 기기에서 결과가 깨질 수 있습니다.'
+        : wDevice === 'cpu'
+          ? 'CPU 로 처리합니다. 느리지만 결과가 안정적이고 내려받는 용량도 절반입니다.'
+          : (forceCpu
+              ? '자동 — 이 기기는 GPU 결과가 깨진 적이 있어 CPU 를 씁니다. 다시 시도하려면 「GPU」를 고르세요.'
+              : '자동 — GPU 로 빠르게 처리하고, 결과가 깨지면 CPU 로 바꿉니다. (권장)');
 
     if (whisperReady()) {
       v.className = 'modelbox__v is-ready';
@@ -2804,7 +2834,7 @@ input, textarea{ font:inherit; }
       v.textContent = '아직 안 받음';
       track.hidden = true;
       btn.disabled = false;
-      label.textContent = '지금 내려받기 (약 ' + m.mb + 'MB)';
+      label.textContent = '지금 내려받기 (약 ' + mb + 'MB · ' + (gpu ? 'GPU용' : 'CPU용') + ')';
     }
     refreshModelUsage();
   }
@@ -5066,8 +5096,12 @@ input, textarea{ font:inherit; }
   /* tiny 는 한국어 정확도가 크게 떨어져 기본에서 제외했다.
      base 를 기본으로 쓰고, 더 정확한 small 을 선택지로 둔다. */
   var WHISPER_MODELS = {
-    base:  { id: 'onnx-community/whisper-base',  label: '가벼움', mb: 160, note: '데이터가 부담될 때 · 인식은 다소 떨어집니다' },
-    small: { id: 'onnx-community/whisper-small', label: '정확',   mb: 470, note: '권장 — 한국어 인식이 확실히 낫습니다' }
+    // 받는 용량은 기기에 따라 다르다. GPU 가 있으면 고정밀(fp16),
+    // 없으면 CPU 용 경량본(q8)을 받으므로 대략 절반이다.
+    base:  { id: 'onnx-community/whisper-base',  label: '가벼움', gpuMb: 160, cpuMb: 80,
+             note: '데이터가 부담될 때 · 인식은 다소 떨어집니다' },
+    small: { id: 'onnx-community/whisper-small', label: '정확',   gpuMb: 470, cpuMb: 240,
+             note: '권장 — 한국어 인식이 확실히 낫습니다' }
   };
 
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
@@ -5080,6 +5114,18 @@ input, textarea{ font:inherit; }
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
   var forceCpu = load(K.forcecpu, false) === true;   // GPU 결과가 깨진 기기 기억
+
+  /* 처리 방식 선택. 'auto' 는 GPU 를 쓰되 결과가 깨지면 CPU 로 내려간다. */
+  var wDevice = load(K.wdevice, 'auto');
+  if (['auto', 'gpu', 'cpu'].indexOf(wDevice) === -1) wDevice = 'auto';
+
+  /** 이번에 실제로 GPU 를 쓸지. */
+  function willUseGpu() {
+    if (!navigator.gpu) return false;
+    if (wDevice === 'cpu') return false;
+    if (wDevice === 'gpu') return true;
+    return !forceCpu;                                // auto
+  }
 
   /* 어떤 모델을 이미 내려받아 뒀는지.
      whisper 변수는 '지금 메모리에 올라와 있는가'일 뿐이라,
@@ -5274,8 +5320,8 @@ input, textarea{ font:inherit; }
 
       var LIMIT = 240000;
 
-      // 이 기기의 GPU 가 결과를 망가뜨린 적이 있으면 처음부터 CPU 로 간다
-      if (!navigator.gpu || forceCpu) return withTimeout(build(false), LIMIT, 'CPU');
+      // 사용자가 고른 방식(또는 자동 판정)에 따라 시작 지점을 정한다
+      if (!willUseGpu()) return withTimeout(build(false), LIMIT, 'CPU');
 
       return withTimeout(build(true), LIMIT, 'GPU').catch(function () {
         if (useWorker) resetWorker();      // 반쯤 올라간 스레드를 버리고 새로 시작
@@ -5420,7 +5466,8 @@ input, textarea{ font:inherit; }
 
         // GPU 결과가 깨졌으면 CPU 로 한 번 더 시도한다.
         // 이 기기에서는 다음부터 계속 CPU 를 쓰도록 기억해 둔다.
-        if (looksBroken(text, job.lang) && whisperDevice === 'GPU' && !forceCpu) {
+        // 사용자가 GPU 를 명시적으로 고른 경우에는 임의로 바꾸지 않는다
+        if (looksBroken(text, job.lang) && whisperDevice === 'GPU' && !forceCpu && wDevice !== 'gpu') {
           forceCpu = true;
           save(K.forcecpu, true);
           whisper = null; whisperFiles = {}; whisperProg = 0; whisperPhase = '';
@@ -5672,6 +5719,26 @@ input, textarea{ font:inherit; }
   $('wModel').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
     setWModel(c.dataset.w);
+  });
+
+  $('wDevice').addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c || c.disabled || whisperLoading) return;
+    if (c.dataset.d === wDevice) return;
+
+    wDevice = c.dataset.d;
+    save(K.wdevice, wDevice);
+    // GPU 를 직접 고르면 '깨진 적 있음' 기록을 풀어 다시 시도하게 한다
+    if (wDevice !== 'cpu') { forceCpu = false; save(K.forcecpu, false); }
+
+    // 방식이 바뀌면 받아야 할 파일도 달라진다
+    whisper = null; whisperProg = 0; whisperFiles = {}; whisperDevice = '';
+    whisperPhase = ''; modelErr = '';
+    resetWorker();
+    wDone = {}; save(K.wdone, wDone);
+
+    syncModelBox();
+    buzz(8);
+    toast('처리 방식을 바꿨어요 — 모델을 다시 받아야 합니다');
   });
 
   $('btnDelModel').addEventListener('click', function () {
