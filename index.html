@@ -1399,7 +1399,7 @@ input, textarea{ font:inherit; }
       <div class="modelbox" id="modelBox">
         <div class="modelbox__top">
           <span class="modelbox__k">음성인식 모델</span>
-          <span class="modelbox__v" id="modelState">확인 중…</span>
+          <span class="modelbox__v" id="modelState">—</span>
         </div>
         <div class="chips" id="wModel">
           <button class="chip" data-w="base">가벼움</button>
@@ -6161,6 +6161,8 @@ input, textarea{ font:inherit; }
   if (canRecord) askPersist().then(function (ok) { persisted = ok; });
   refreshRecCount();
   render();
+  // 어떤 이유로든 모델 상자가 갱신되지 못했으면 한 번 더 그린다
+  setTimeout(function () { try { syncModelBox(); } catch (e) {} }, 800);
 })();
 </script>
 
