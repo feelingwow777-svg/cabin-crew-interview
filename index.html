@@ -5066,6 +5066,7 @@ input, textarea{ font:inherit; }
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
   var whisperPhase = '';   // 'download' | 'init'
   var whisperBytes = null, whisperSpeed = 0, whisperEta = 0, whisperStartAt = 0;
+  var whisperInit = 0, whisperDone = 0;   // 시작한 파일 수 / 끝난 파일 수
   var wModel = load(K.wmodel, 'small');
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
@@ -5090,6 +5091,7 @@ input, textarea{ font:inherit; }
 
     whisperFiles = {};
     whisperBytes = null; whisperSpeed = 0; whisperEta = 0;
+    whisperInit = 0; whisperDone = 0;
     whisperStartAt = Date.now();
     whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
       mod.env.allowLocalModels = false;
@@ -5114,10 +5116,19 @@ input, textarea{ font:inherit; }
             }
             if (onProgress) onProgress(whisperProg);
           }
-          // 내려받기가 끝나면 기기에 올리는 단계로 넘어간다.
-          // 이 단계는 진행률이 없어 멈춘 것처럼 보이므로 상태를 따로 알린다.
-          if (p.status === 'done' || p.status === 'ready') {
+          // 'done' 은 파일 하나가 끝날 때마다 온다. 그것만 보고 단계를 넘기면
+          // 아직 9개가 더 남았는데도 '올리는 중'으로 표시된다.
+          // 시작한 파일이 모두 끝났을 때만 다음 단계로 본다.
+          if (p.status === 'initiate') whisperInit++;
+          if (p.status === 'done') whisperDone++;
+
+          var allFetched = whisperInit > 0 && whisperDone >= whisperInit &&
+                           (!whisperBytes || whisperBytes.loaded >= whisperBytes.total * 0.999);
+          if (p.status === 'ready' || allFetched) {
             whisperPhase = 'init';
+            whisperEta = 0;
+          }
+          if (p.status === 'initiate' || p.status === 'done' || p.status === 'ready') {
             if (onProgress) onProgress(whisperProg);
           }
         };
@@ -5152,7 +5163,8 @@ input, textarea{ font:inherit; }
       if (!navigator.gpu || forceCpu) return withTimeout(build(false), LIMIT, 'CPU');
 
       return withTimeout(build(true), LIMIT, 'GPU').catch(function () {
-        whisperFiles = {};
+        whisperFiles = {}; whisperInit = 0; whisperDone = 0;
+        whisperBytes = null; whisperEta = 0;
         whisperPhase = 'download';
         return withTimeout(build(false), LIMIT, 'CPU');
       });
