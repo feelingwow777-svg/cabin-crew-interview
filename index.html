@@ -5568,10 +5568,12 @@ input, textarea{ font:inherit; }
 
         // GPU 결과가 깨졌으면 CPU 로 한 번 더 시도한다.
         // 이 기기에서는 다음부터 계속 CPU 를 쓰도록 기억해 둔다.
-        // 사용자가 GPU 를 명시적으로 고른 경우에는 임의로 바꾸지 않는다
-        if (looksBroken(text, job.lang) && whisperDevice === 'GPU' && !forceCpu && wDevice !== 'gpu') {
+        // GPU 결과가 깨졌으면 선택과 무관하게 CPU 로 다시 처리한다.
+        // 깨진 글자를 그대로 보여주는 것이 가장 나쁘기 때문이다.
+        if (looksBroken(text, job.lang) && whisperDevice === 'GPU' && !forceCpu) {
           forceCpu = true;
           save(K.forcecpu, true);
+          if (wDevice === 'gpu') { wDevice = 'auto'; save(K.wdevice, wDevice); }
           whisper = null; whisperFiles = {}; whisperProg = 0; whisperPhase = '';
           if (job.onStage) job.onStage('이 기기의 GPU 결과가 불안정해 다시 처리합니다…');
           resetWorker();
