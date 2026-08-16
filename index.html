@@ -1418,15 +1418,7 @@ input, textarea{ font:inherit; }
           받아둔 모델 삭제
           <span class="muted" id="modelUsage">—</span>
         </button>
-        <div class="exsrc" style="margin-top:2px">
-          <span class="exrow__label">처리 방식</span>
-          <div class="chips" id="wDevice">
-            <button class="chip" data-d="auto">자동</button>
-            <button class="chip" data-d="gpu">GPU · 빠름</button>
-            <button class="chip" data-d="cpu">CPU · 안정</button>
-          </div>
-          <p class="prefs__note" id="wDeviceNote"></p>
-        </div>
+        <p class="prefs__note" id="wDeviceNote"></p>
       </div>
     </div>
 
@@ -2425,7 +2417,7 @@ input, textarea{ font:inherit; }
     wmodel:   'ccq.wmodel.v1',
     forcecpu: 'ccq.forcecpu.v1',
     wdone:    'ccq.wdone.v1',
-    wdevice:  'ccq.wdevice.v1'
+    wsize:    'ccq.wsize.v1'
   };
 
   function load(key, fallback) {
@@ -2757,44 +2749,35 @@ input, textarea{ font:inherit; }
     $('modelEta').hidden = true;
 
     // 이 기기가 실제로 어느 쪽을 받게 되는지
+    // 어느 방식을 쓸지 아직 모르면 확인하고 다시 그린다
+    var checking = !!(navigator.gpu && workerGpu === null);
+    if (checking) probeWorkerGpu().then(function () { syncModelBox(); });
+
     var gpu = willUseGpu();
-    var mb = gpu ? m.gpuMb : m.cpuMb;
+
+    // 받아본 적이 있으면 실측 용량, 없으면 추정 용량
+    var sizeOf = function (key) {
+      var known = knownSizeMb(key, gpu);
+      var mm = WHISPER_MODELS[key];
+      return known !== null ? { mb: Math.round(known), exact: true }
+                            : { mb: gpu ? mm.gpuMb : mm.cpuMb, exact: false };
+    };
+    var mine = sizeOf(wModel);
+    var mb = mine.mb;
 
     document.querySelectorAll('#wModel .chip').forEach(function (c) {
-      var mm = WHISPER_MODELS[c.dataset.w];
-      c.textContent = mm.label + ' ' + (gpu ? mm.gpuMb : mm.cpuMb) + 'MB';
+      var s = sizeOf(c.dataset.w);
+      c.textContent = WHISPER_MODELS[c.dataset.w].label + ' '
+        + (checking ? '…' : (s.exact ? '' : '약 ') + s.mb + 'MB');
       c.setAttribute('aria-pressed', String(c.dataset.w === wModel));
       c.disabled = !!whisperLoading;
     });
     $('wModelNote').textContent = m.note;
 
-    // 처리 방식
-    document.querySelectorAll('#wDevice .chip').forEach(function (c) {
-      c.setAttribute('aria-pressed', String(c.dataset.d === wDevice));
-      c.disabled = !!whisperLoading || (c.dataset.d === 'gpu' && !navigator.gpu);
-    });
-
-    // 스레드에서 GPU 가 되는지 아직 모르면 확인 후 다시 그린다
-    if (navigator.gpu && workerGpu === null) {
-      probeWorkerGpu().then(function () { syncModelBox(); });
-    }
-    if (gpuFellBack && whisperDevice === 'CPU') {
-      $('wDeviceNote').textContent = 'GPU 로 시작하지 못해 CPU 용(용량 절반)으로 받았습니다. '
-        + '이 기기에서는 GPU 를 쓸 수 없습니다 — ' + gpuFellBack;
-      return;
-    }
-    $('wDeviceNote').textContent = !navigator.gpu
-      ? '이 기기는 GPU 가속을 지원하지 않아 CPU 로만 처리합니다.'
-      : wDevice === 'gpu'
-        ? ('GPU 로 처리합니다. 훨씬 빠릅니다.'
-            + (gpuNeedsMainThread() ? ' 다만 이 브라우저는 GPU 처리 중 화면이 잠시 멈춥니다.' : ''))
-        : wDevice === 'cpu'
-          ? 'CPU 로 처리합니다. 느리지만 화면이 멈추지 않고 내려받는 용량도 절반입니다.'
-          : (forceCpu
-              ? '자동 — 이 기기는 GPU 결과가 깨진 적이 있어 CPU 를 씁니다. 다시 시도하려면 「GPU」를 고르세요.'
-              : gpuNeedsMainThread()
-                ? '자동 — 이 브라우저는 GPU 를 쓰면 화면이 멈춰서, 끊김 없는 CPU 를 씁니다. 속도를 원하면 「GPU」를 고르세요.'
-                : '자동 — GPU 로 빠르게 처리하고, 결과가 깨지면 CPU 로 바꿉니다. (권장)');
+    $('wDeviceNote').textContent = checking
+      ? '이 기기에 맞는 처리 방식을 확인하는 중입니다…'
+      : (gpu ? 'GPU 로 처리합니다 — 빠릅니다.' : 'CPU 로 처리합니다 — 느리지만 인식 품질은 같습니다.')
+        + ' 방식과 용량은 기기에 맞춰 자동으로 정해집니다.';
 
     if (whisperReady()) {
       v.className = 'modelbox__v is-ready';
@@ -4071,7 +4054,7 @@ input, textarea{ font:inherit; }
      ============================================================ */
   var exam = {
     n: 3, per: 80, scope: 'all', mode: anMode,
-    list: [], idx: 0, results: [],
+    list: [], idx: 0, results: [], pending: [],
     rec: null, stt: null, tId: null, endAt: 0, running: false
   };
 
@@ -4197,8 +4180,9 @@ input, textarea{ font:inherit; }
       note.className = 'micnote micnote--ok';
       note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 한 번 요청합니다. ' +
         '팝업에서 <strong>“이번만 허용”이 아니라 “허용”(항상)</strong>을 고르면 다시 묻지 않습니다.<br>' +
-        '답변은 <strong>녹음 + 받아쓰기 + 목소리 분석</strong>이 한 번에 처리됩니다. ' +
-        '다음 문항에 답하는 동안 앞 문항을 뒤에서 받아쓰므로 기다림이 거의 없습니다. ' +
+        '답변은 <strong>녹음 + 받아쓰기 + 목소리 분석</strong>이 모두 처리됩니다. ' +
+        '문항을 푸는 동안에는 <strong>녹음만</strong> 하고, 받아쓰기는 <strong>시험이 끝난 뒤</strong> 한 번에 하므로 ' +
+        '문항이 몇 개든 녹음이 끊기지 않습니다. ' +
         '<span style="color:var(--fog-2)">모든 처리는 이 기기 안에서 이뤄지며 음성이 밖으로 나가지 않습니다.</span>';
     } else if (frameBlocksMic) {
       note.className = 'micnote micnote--no';
@@ -4215,7 +4199,7 @@ input, textarea{ font:inherit; }
   }
 
   function openExam() {
-    exam.results = []; exam.idx = 0; exam.running = false;
+    exam.results = []; exam.idx = 0; exam.running = false; exam.pending = [];
     syncExamSetup();
     showPane('exSetup');
     $('exStep').textContent = '';
@@ -4254,9 +4238,13 @@ input, textarea{ font:inherit; }
     exam.list = bag.slice(0, Math.min(exam.n, bag.length));
     exam.idx = 0;
     exam.results = [];
+    exam.pending = [];
     exam.running = true;
     finishing = false;
     showPane('exRun');
+
+    // 모델 준비는 매우 무거워서 녹음 중에 하면 다음 문항 녹음 시작이 밀린다.
+    // 시험이 끝난 뒤 결과 화면에서 준비와 분석을 함께 한다.
 
     // 마이크를 미리 한 번만 확보한다. 실패해도 시간 연습으로 진행한다.
     if (canRecord) {
@@ -4327,6 +4315,18 @@ input, textarea{ font:inherit; }
 
   var finishing = false;
 
+  /**
+   * 미뤄 둔 분석을 한꺼번에 실행한다.
+   * 시험 중에는 절대 부르지 않는다 — 분석이 무거워서 녹음 시작을 밀어내기 때문이다.
+   * 모든 문항의 녹음이 끝난 뒤(결과 화면)에만 부른다. 그래서 문항이 몇 개든 상관없다.
+   */
+  function flushExamPending() {
+    if (!exam.pending || !exam.pending.length) return;
+    var jobs = exam.pending;
+    exam.pending = [];
+    jobs.forEach(function (fn) { fn(); });
+  }
+
   function finishQuestion() {
     // 시간 만료와 버튼 클릭이 겹치면 같은 문항이 두 번 마감될 수 있다
     if (finishing || !exam.running) return;
@@ -4358,10 +4358,13 @@ input, textarea{ font:inherit; }
         // 그래서 결과 화면에 도착할 즈음이면 대부분 끝나 있다.
         var slot = exam.results[exam.results.length - 1];
         slot.pending = true;
-        // 다음 문항이 먼저 뜨고 나서 분석을 시작한다.
-        // 순서를 바꾸면 분석 준비 때문에 다음 질문이 늦게 나타난다.
-        setTimeout(function () {
+
+        // 분석은 곧바로 시작하지 않는다. 다음 문항의 녹음이 실제로 돌기 시작한
+        // 뒤에 꺼내 쓴다. 그러지 않으면 무거운 분석이 녹음 시작을 밀어낸다.
+        exam.pending.push(function () {
+          examAnalyStart = Date.now();
           enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
+            examAnalyStart = Date.now();      // 다음 문항 분석 시작 시각으로 갱신
             slot.pending = false;
             slot.sttErr = err || '';
             if (text) {
@@ -4371,7 +4374,7 @@ input, textarea{ font:inherit; }
             }
             if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
           });
-        }, 250);
+        });
       }
       exam.idx++;
       finishing = false;
@@ -4401,6 +4404,7 @@ input, textarea{ font:inherit; }
   }
 
   var examPendTick = null;
+  var examAnalyStart = 0;      // 지금 문항의 분석이 시작된 시각
 
   /** 답변 내용 영역. 분석이 끝날 때마다 다시 불린다. */
   function renderExamContent() {
@@ -4408,18 +4412,46 @@ input, textarea{ font:inherit; }
     cul.innerHTML = '';
     $('exContentWrap').hidden = false;
 
+    var total = exam.results.length;
     var pending = exam.results.filter(function (r) { return r.pending; }).length;
     if (pending) {
+      var doneN = total - pending;
       var lp = document.createElement('li');
       lp.className = 'is-warn';
-      lp.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-      lp.querySelector('.fb__t').textContent = '분석 중 — 남은 문항 ' + pending + '개';
-      lp.querySelector('.fb__d').textContent = whisperReady()
-        ? '기기 안에서 답변을 글로 옮기는 중입니다. 끝나는 대로 이 화면이 자동으로 채워집니다.'
-        : (whisperPhase === 'init'
-            ? '음성인식 모델을 기기에 올리는 중입니다. 처음 한 번만 걸립니다.'
-            : '음성인식 모델 내려받는 중 ' + whisperProg + '% — 처음 한 번만 걸립니다.');
+      lp.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>'
+        + '<div class="anspend__track" style="margin-top:8px"><div class="anspend__bar" id="exAnalyBar"></div></div>';
+
+      var head, detail, pct;
+      if (!whisperReady()) {
+        if (whisperPhase === 'init') {
+          head = '분석 준비 중입니다';
+          detail = '음성인식 모델을 기기에 올리는 중 · '
+            + Math.round((Date.now() - whisperInitAt) / 1000) + '초 경과 (처음 한 번만 걸립니다)';
+          pct = 100;
+        } else {
+          head = '분석 준비 중입니다 · ' + whisperProg + '%';
+          detail = '음성인식 모델 내려받는 중'
+            + (whisperBytes ? ' (' + fmtBytes(whisperBytes.loaded) + '/' + fmtBytes(whisperBytes.total) + ')' : '')
+            + (whisperEta ? ' · 약 ' + fmtDur(whisperEta) + ' 남음' : '');
+          pct = whisperProg;
+        }
+      } else {
+        // 문항 단위 진행 + 현재 문항의 예상 경과분을 더해 부드럽게 보여 준다
+        var cur = exam.results.find(function (r) { return r.pending; });
+        var curSec = cur && cur.metrics ? cur.metrics.durationSec : (cur ? cur.usedSec : 30);
+        var expect = Math.max(3, curSec * (whisperDevice === 'CPU' ? 6 : 1.2)) * 1000;
+        var within = examAnalyStart ? Math.min(0.95, (Date.now() - examAnalyStart) / expect) : 0;
+        pct = Math.min(99, Math.round(((doneN + within) / total) * 100));
+        head = '분석 중입니다 · ' + pct + '%';
+        detail = total + '문항 중 ' + doneN + '개 완료 · 남은 ' + pending + '개'
+          + (whisperDevice ? ' · ' + whisperDevice + ' 처리' : '')
+          + '. 끝나는 대로 아래에 자동으로 채워집니다.';
+      }
+      lp.querySelector('.fb__t').textContent = head;
+      lp.querySelector('.fb__d').textContent = detail;
       cul.appendChild(lp);
+      var barEl = lp.querySelector('#exAnalyBar');
+      if (barEl) barEl.style.width = pct + '%';
 
       // 진행 상황이 멈춘 듯 보이지 않게 주기적으로 다시 그린다
       if (!examPendTick) {
@@ -4430,7 +4462,7 @@ input, textarea{ font:inherit; }
             return;
           }
           renderExamContent();
-        }, 1200);
+        }, 400);
       }
     }
 
@@ -4481,6 +4513,7 @@ input, textarea{ font:inherit; }
     exam.running = false;
     stopExamTimer();
     releaseMic();               // 모든 문항이 끝났으니 마이크를 놓는다
+    flushExamPending();         // 더 이상 녹음이 없으니 미뤄 둔 분석을 모두 실행
     $('exGauge').classList.add('is-off');
     $('exStep').textContent = '결과';
     showPane('exReport');
@@ -5132,9 +5165,21 @@ input, textarea{ font:inherit; }
   var whisperDevice = '';
   var forceCpu = load(K.forcecpu, false) === true;   // GPU 결과가 깨진 기기 기억
 
-  /* 처리 방식 선택. 'auto' 는 GPU 를 쓰되 결과가 깨지면 CPU 로 내려간다. */
-  var wDevice = load(K.wdevice, 'auto');
-  if (['auto', 'gpu', 'cpu'].indexOf(wDevice) === -1) wDevice = 'auto';
+  /* 처리 방식은 기기에 맞춰 자동으로 정한다.
+     GPU 를 쓸 수 있으면 GPU, 아니면 CPU. 사용자가 고를 것이 없다. */
+  var wDevice = 'auto';
+
+  /* 실제로 받은 용량 기록. 추정치 대신 진짜 숫자를 보여주기 위해서다.
+     키는 '모델:방식' (예: small:gpu) */
+  var wSizes = load(K.wsize, {});
+  if (!wSizes || typeof wSizes !== 'object' || Array.isArray(wSizes)) wSizes = {};
+
+  function sizeKey(model, gpu) { return model + ':' + (gpu ? 'gpu' : 'cpu'); }
+
+  function knownSizeMb(model, gpu) {
+    var v = wSizes[sizeKey(model, gpu)];
+    return typeof v === 'number' && v > 0 ? v : null;
+  }
 
   /* 화면 스레드에 GPU 가 있어도 백그라운드 스레드에서는 못 쓰는 브라우저가 있다.
      실제로 물어봐서 확인한다. null = 아직 확인 전. */
@@ -5384,6 +5429,12 @@ input, textarea{ font:inherit; }
       whisper = pipe; whisperLoading = null; whisperProg = 100;
       whisperPhase = '';
       markDownloaded(wModel);       // 이 모델은 기기에 남아 있다
+
+      // 실제로 받은 용량을 기록해 다음부터는 정확한 숫자를 보여 준다
+      if (whisperBytes && whisperBytes.total > 0) {
+        wSizes[sizeKey(wModel, whisperDevice === 'GPU')] = +(whisperBytes.total / 1048576).toFixed(1);
+        save(K.wsize, wSizes);
+      }
       if (onProgress) onProgress(100);
       return pipe;
     }).catch(function (e) {
