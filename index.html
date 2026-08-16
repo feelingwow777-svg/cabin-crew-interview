@@ -1396,7 +1396,11 @@ input, textarea{ font:inherit; }
         </div>
         <button class="btn btn--ghost" id="btnGetModel" style="width:100%;min-height:44px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
-          <span id="btnGetModelLabel">지금 내려받기 (약 40MB)</span>
+          <span id="btnGetModelLabel">지금 내려받기</span>
+        </button>
+        <button class="linkrow" id="btnDelModel" style="min-height:38px;font-size:12.5px">
+          받아둔 모델 삭제
+          <span class="muted" id="modelUsage">—</span>
         </button>
       </div>
     </div>
@@ -2752,6 +2756,31 @@ input, textarea{ font:inherit; }
       btn.disabled = false;
       label.textContent = '지금 내려받기 (약 ' + m.mb + 'MB)';
     }
+    refreshModelUsage();
+  }
+
+  /** 모델이 실제로 차지하는 용량. 저장은 Cache Storage 에 들어간다. */
+  function refreshModelUsage() {
+    if (!navigator.storage || !navigator.storage.estimate) { $('modelUsage').textContent = ''; return; }
+    navigator.storage.estimate().then(function (e) {
+      var d = e.usageDetails;
+      var bytes = d && typeof d.caches === 'number' ? d.caches : null;
+      $('modelUsage').textContent = bytes === null ? '' : (bytes > 1024 ? fmtBytes(bytes) : '없음');
+    }).catch(function () { $('modelUsage').textContent = ''; });
+  }
+
+  /** 받아둔 모델만 지운다. 답변 기록·녹음은 다른 저장소라 건드리지 않는다. */
+  function deleteModel() {
+    if (!window.caches) return Promise.reject(new Error('unsupported'));
+    return caches.keys().then(function (names) {
+      return Promise.all(names.map(function (n) { return caches.delete(n); }));
+    }).then(function () {
+      whisper = null;
+      whisperProg = 0;
+      whisperFiles = {};
+      whisperDevice = '';
+      modelErr = '';
+    });
   }
 
   function setWModel(k) {
@@ -4534,7 +4563,9 @@ input, textarea{ font:inherit; }
       cell(store, String(custom.length), '추가한 질문');
       if (navigator.storage && navigator.storage.estimate) {
         navigator.storage.estimate().then(function (e) {
-          cell(store, fmtBytes(e.usage || 0), '저장소 사용량');
+          var d = e.usageDetails || {};
+          cell(store, fmtBytes(e.usage || 0), '저장소 총 사용량');
+          cell(store, fmtBytes(d.caches || 0), '음성인식 모델', true);
           cell(store, persisted === true ? '보장됨' : '자동삭제 가능', '보관 상태', true);
         }).catch(function () {});
       }
@@ -5283,6 +5314,17 @@ input, textarea{ font:inherit; }
     setWModel(c.dataset.w);
   });
 
+  $('btnDelModel').addEventListener('click', function () {
+    if (whisperLoading) { toast('내려받는 중에는 지울 수 없어요'); return; }
+    if (!confirm('받아둔 음성인식 모델을 지웁니다.\n답변 기록·통계·녹음 파일은 그대로 남습니다.\n\n다음에 쓰려면 다시 내려받아야 합니다. 계속할까요?')) return;
+
+    deleteModel().then(function () {
+      syncModelBox();
+      buzz(14);
+      toast('모델을 삭제했어요');
+    }).catch(function () { toast('삭제하지 못했어요'); });
+  });
+
   $('btnGetModel').addEventListener('click', function () {
     if (whisperReady() || whisperLoading) return;
     modelErr = '';
@@ -5368,9 +5410,12 @@ input, textarea{ font:inherit; }
   });
 
   $('admWipe').addEventListener('click', function () {
-    if (!confirm('이 기기의 모든 기록을 지웁니다.\n답변 표기·통계·추가한 질문·녹음이 전부 삭제되며 되돌릴 수 없습니다.\n\n계속할까요?')) return;
+    if (!confirm('이 기기의 모든 기록을 지웁니다.\n답변 표기·통계·추가한 질문·녹음·받아둔 모델이 전부 삭제되며 되돌릴 수 없습니다.\n\n계속할까요?')) return;
     Object.keys(K).forEach(function (k) { try { localStorage.removeItem(K[k]); } catch (e) {} });
-    recClear().catch(function () {}).then(function () {
+    Promise.all([
+      recClear().catch(function () {}),
+      deleteModel().catch(function () {})
+    ]).then(function () {
       buzz([40, 60, 40]);
       alert('초기화했습니다. 페이지를 다시 불러옵니다.');
       location.reload();
