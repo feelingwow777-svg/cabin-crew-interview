@@ -1388,7 +1388,6 @@ input, textarea{ font:inherit; }
         <div class="chips" id="wModel">
           <button class="chip" data-w="base">가벼움 80MB</button>
           <button class="chip" data-w="small">정확 250MB</button>
-          <button class="chip" data-w="turbo">최상 800MB</button>
         </div>
         <p class="prefs__note" id="wModelNote"></p>
         <div class="modelbox__track" id="modelTrack" hidden>
@@ -4963,9 +4962,7 @@ input, textarea{ font:inherit; }
      base 를 기본으로 쓰고, 더 정확한 small 을 선택지로 둔다. */
   var WHISPER_MODELS = {
     base:  { id: 'onnx-community/whisper-base',           label: '가벼움', mb: 80,   note: '데이터가 부담될 때' },
-    small: { id: 'onnx-community/whisper-small',          label: '정확',   mb: 250,  note: '권장 — 한국어가 또렷하게 잡힙니다' },
-    turbo: { id: 'onnx-community/whisper-large-v3-turbo', label: '최상',   mb: 800,  heavy: true,
-             note: '가장 정확하지만 메모리를 많이 씁니다 — PC 권장' }
+    small: { id: 'onnx-community/whisper-small',          label: '정확',   mb: 250,  note: '권장 — 한국어 인식이 가장 안정적입니다' }
   };
 
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
@@ -5071,16 +5068,24 @@ input, textarea{ font:inherit; }
         var pcm = rendered.getChannelData(0);
 
         // 녹음은 목소리 크기를 정직하게 재려고 자동 이득을 꺼 두었다.
-        // 그 상태의 작은 소리를 그대로 넣으면 인식이 급격히 나빠지므로,
-        // 받아쓰기용으로만 크기를 키워서 넣는다.
-        var peak = 0;
-        for (var i = 0; i < pcm.length; i++) {
-          var a = pcm[i] < 0 ? -pcm[i] : pcm[i];
-          if (a > peak) peak = a;
-        }
-        if (peak > 0.0001 && peak < 0.95) {
-          var g = Math.min(0.95 / peak, 12);      // 과하게 키워 잡음까지 부풀리지 않는다
-          for (var j = 0; j < pcm.length; j++) pcm[j] *= g;
+        // 너무 작으면 인식이 나빠지지만, 최댓값에 맞춰 크게 키우면 순간적인
+        // 잡음까지 함께 부풀려 오히려 인식이 망가진다.
+        // 그래서 전체 세기(RMS)를 기준으로, 필요할 때만 조금씩 올린다.
+        var sum = 0;
+        for (var i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+        var rms = Math.sqrt(sum / Math.max(1, pcm.length));
+
+        var TARGET = 0.06;          // 사람 목소리로 편안한 수준
+        if (rms > 0.0005 && rms < TARGET) {
+          var g = Math.min(TARGET / rms, 4);     // 최대 4배까지만
+          // 키운 뒤에도 찌그러지지 않도록 최댓값을 확인한다
+          var peak = 0;
+          for (var j = 0; j < pcm.length; j++) {
+            var a = pcm[j] < 0 ? -pcm[j] : pcm[j];
+            if (a > peak) peak = a;
+          }
+          if (peak * g > 0.98) g = 0.98 / peak;
+          if (g > 1.02) for (var k = 0; k < pcm.length; k++) pcm[k] *= g;
         }
         return pcm;
       });
