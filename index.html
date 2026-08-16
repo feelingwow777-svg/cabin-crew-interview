@@ -239,6 +239,28 @@ input, textarea{ font:inherit; }
 .prefs__row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .prefs__label{ font-size:12.5px; color:var(--fog); }
 
+/* ---------- 음성인식 모델 상태 ---------- */
+.modelbox{
+  display:flex; flex-direction:column; gap:9px;
+  padding:12px 13px; margin-top:2px;
+  border:1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  border-radius:var(--r-md);
+  background:color-mix(in srgb, var(--blue) 8%, transparent);
+}
+.modelbox__top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.modelbox__k{ font-size:12px; color:var(--fog); }
+.modelbox__v{
+  font-family:var(--t-mono); font-size:11.5px; font-variant-numeric:tabular-nums;
+  color:var(--blue); font-weight:700;
+}
+.modelbox__v.is-ready{ color:var(--green); }
+.modelbox__v.is-err{ color:var(--red); }
+.modelbox__track{ height:6px; border-radius:99px; background:rgba(255,255,255,.10); overflow:hidden; }
+.modelbox__bar{
+  height:100%; width:0%; border-radius:99px; background:var(--blue);
+  transition:width .3s ease;
+}
+
 /* ---------- 답변 시간 다이얼 ---------- */
 .dialbox{ display:flex; flex-direction:column; gap:11px; }
 
@@ -1362,6 +1384,20 @@ input, textarea{ font:inherit; }
         <button class="chip" data-mode="precise">녹음 + 정밀 분석</button>
       </div>
       <p class="prefs__note" id="anModeNote"></p>
+
+      <div class="modelbox" id="modelBox" hidden>
+        <div class="modelbox__top">
+          <span class="modelbox__k">음성인식 모델</span>
+          <span class="modelbox__v" id="modelState">확인 중…</span>
+        </div>
+        <div class="modelbox__track" id="modelTrack" hidden>
+          <div class="modelbox__bar" id="modelBar"></div>
+        </div>
+        <button class="btn btn--ghost" id="btnGetModel" style="width:100%;min-height:44px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
+          <span id="btnGetModelLabel">지금 내려받기 (약 40MB)</span>
+        </button>
+      </div>
     </div>
 
     <button class="linkrow" id="btnRecs">
@@ -2679,8 +2715,48 @@ input, textarea{ font:inherit; }
       ? '<b>녹음과 답변 내용 분석을 모두</b> 얻습니다. 녹음을 마친 뒤 기기 안에서 처리하므로 충돌이 없습니다. ' +
         '처음 한 번 <b>약 40MB</b>를 내려받고(Wi-Fi 권장), 분석에 답변 길이의 <b>2~4배</b> 시간이 걸립니다.'
       : '녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나오면 <b>「녹음 + 정밀 분석」</b>으로 바꾸세요.';
+    syncModelBox();
     if (!$('sheetAnswer')) return;
     syncRecBtn(!!(rec && rec.isActive()));
+  }
+
+  /* 모델을 한 번이라도 받아 뒀는지. 브라우저 캐시에 남아 있어 다음엔 즉시 올라온다. */
+  var modelErr = '';
+
+  function syncModelBox() {
+    var box = $('modelBox');
+    box.hidden = (anMode !== 'precise');
+    if (box.hidden) return;
+
+    var v = $('modelState'), track = $('modelTrack'), bar = $('modelBar');
+    var btn = $('btnGetModel'), label = $('btnGetModelLabel');
+
+    if (whisperReady()) {
+      v.className = 'modelbox__v is-ready';
+      v.textContent = '준비 완료';
+      track.hidden = true;
+      btn.disabled = true;
+      label.textContent = '기기에 저장됨 — 바로 사용 가능';
+    } else if (whisperLoading) {
+      v.className = 'modelbox__v';
+      v.textContent = whisperProg + '%';
+      track.hidden = false;
+      bar.style.width = whisperProg + '%';
+      btn.disabled = true;
+      label.textContent = '내려받는 중…';
+    } else if (modelErr) {
+      v.className = 'modelbox__v is-err';
+      v.textContent = '실패';
+      track.hidden = true;
+      btn.disabled = false;
+      label.textContent = '다시 시도 (' + modelErr.slice(0, 24) + ')';
+    } else {
+      v.className = 'modelbox__v';
+      v.textContent = '아직 안 받음';
+      track.hidden = true;
+      btn.disabled = false;
+      label.textContent = '지금 내려받기 (약 40MB)';
+    }
   }
 
   function setAnMode(m) {
@@ -2690,6 +2766,13 @@ input, textarea{ font:inherit; }
     syncAnMode();
     if (!$('exam').hidden) syncExamSetup();
     buzz(8);
+
+    if (anMode === 'precise' && !whisperReady() && !whisperLoading) {
+      toast('아래 「지금 내려받기」를 먼저 눌러 주세요');
+      setTimeout(function () {
+        $('modelBox').scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+      }, 120);
+    }
   }
 
   /* ---------- 답변 시간 다이얼 ---------- */
@@ -4519,6 +4602,8 @@ input, textarea{ font:inherit; }
     row(env, '실행 형태', inFrame ? '프레임 안 (기능 제한)' : '단독 페이지');
     row(env, '마이크 녹음', canRecord ? '가능' : (frameBlocksMic ? '차단 (구조적)' : '불가'));
     row(env, '답변 받아쓰기', canTranscribe ? '가능' : '미지원');
+    row(env, '정밀 분석 모델', whisperReady() ? '준비됨' : (whisperLoading ? '받는 중' : '미설치'));
+    row(env, '앱 버전', document.lastModified || '알 수 없음');
     row(env, '저장 기능', (function () { try { localStorage.setItem('_a', '1'); localStorage.removeItem('_a'); return '정상'; } catch (e) { return '차단됨'; } })());
     // data: URL 처럼 경로가 문서 전체인 경우가 있어 잘라서 보여 준다
     var addr = (location.host || location.protocol) + location.pathname;
@@ -4926,7 +5011,7 @@ input, textarea{ font:inherit; }
   var WHISPER_LIB   = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5';
   var WHISPER_MODEL = 'onnx-community/whisper-tiny';
 
-  var whisper = null, whisperLoading = null, whisperProg = 0;
+  var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
   var whisperQueue = [], whisperBusy = false;
 
   function whisperReady() { return !!whisper; }
@@ -4942,8 +5027,15 @@ input, textarea{ font:inherit; }
         dtype: 'q8',
         device: 'wasm',
         progress_callback: function (p) {
-          if (p && p.status === 'progress' && p.total) {
-            whisperProg = Math.round((p.loaded / p.total) * 100);
+          if (!p) return;
+          // 파일이 여러 개라 파일별 진행률을 합산해 전체 비율을 만든다
+          if (p.status === 'progress' && p.file && p.total) {
+            whisperFiles[p.file] = { loaded: p.loaded || 0, total: p.total };
+            var l = 0, t = 0;
+            Object.keys(whisperFiles).forEach(function (k) {
+              l += whisperFiles[k].loaded; t += whisperFiles[k].total;
+            });
+            if (t) whisperProg = Math.min(99, Math.round((l / t) * 100));
             if (onProgress) onProgress(whisperProg);
           }
         }
@@ -5237,6 +5329,28 @@ input, textarea{ font:inherit; }
   $('anMode').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
     setAnMode(c.dataset.mode);
+  });
+
+  $('btnGetModel').addEventListener('click', function () {
+    if (whisperReady() || whisperLoading) return;
+    modelErr = '';
+    buzz(10);
+    toast('내려받기를 시작했어요 — 화면을 켜 두세요');
+
+    var tick = setInterval(syncModelBox, 300);
+    syncModelBox();
+
+    loadWhisper().then(function () {
+      clearInterval(tick);
+      syncModelBox();
+      buzz(20);
+      toast('음성인식 모델 준비 완료');
+    }).catch(function (e) {
+      clearInterval(tick);
+      modelErr = String(e && e.message || e).slice(0, 60);
+      syncModelBox();
+      toast('내려받기에 실패했어요');
+    });
   });
 
   $('btnTip').addEventListener('click', toggleTip);
