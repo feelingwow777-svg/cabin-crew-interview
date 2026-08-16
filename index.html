@@ -4315,16 +4315,20 @@ input, textarea{ font:inherit; }
         // 그래서 결과 화면에 도착할 즈음이면 대부분 끝나 있다.
         var slot = exam.results[exam.results.length - 1];
         slot.pending = true;
-        enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
-          slot.pending = false;
-          slot.sttErr = err || '';
-          if (text) {
-            slot.content = analyzeContent(text, item);
-            meta.transcript = text;
-            recAdd(meta, blobInfo.blob).catch(function () {});
-          }
-          if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
-        });
+        // 다음 문항이 먼저 뜨고 나서 분석을 시작한다.
+        // 순서를 바꾸면 분석 준비 때문에 다음 질문이 늦게 나타난다.
+        setTimeout(function () {
+          enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
+            slot.pending = false;
+            slot.sttErr = err || '';
+            if (text) {
+              slot.content = analyzeContent(text, item);
+              meta.transcript = text;
+              recAdd(meta, blobInfo.blob).catch(function () {});
+            }
+            if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
+          });
+        }, 250);
       }
       exam.idx++;
       finishing = false;
@@ -5089,6 +5093,79 @@ input, textarea{ font:inherit; }
 
   function whisperReady() { return !!whisper; }
 
+  /* ------------------------------------------------------------
+     음성 인식은 계산량이 커서 메인 스레드에서 돌리면 화면이 통째로
+     멈춘다. 실전평가에서 다음 문항이 제때 시작되지 못하는 원인이었다.
+     별도 스레드(Worker)로 옮겨 화면과 분리한다.
+     ------------------------------------------------------------ */
+  var WORKER_SRC = [
+    'let pipe = null;',
+    'self.onmessage = async (e) => {',
+    '  const d = e.data;',
+    '  try {',
+    '    if (d.type === "load") {',
+    '      const mod = await import(d.lib);',
+    '      mod.env.allowLocalModels = false;',
+    '      pipe = await mod.pipeline("automatic-speech-recognition", d.model, {',
+    '        device: d.device, dtype: d.dtype,',
+    '        progress_callback: (p) => self.postMessage({ type: "progress", p })',
+    '      });',
+    '      self.postMessage({ type: "loaded", id: d.id });',
+    '    } else if (d.type === "run") {',
+    '      const r = await pipe(d.pcm, d.opts);',
+    '      self.postMessage({ type: "result", id: d.id, text: (r && r.text) || "" });',
+    '    }',
+    '  } catch (err) {',
+    '    self.postMessage({ type: "error", id: d.id, error: String((err && err.message) || err) });',
+    '  }',
+    '};'
+  ].join('\n');
+
+  var wk = null, wkSeq = 0, wkWaiting = {}, wkProgress = null;
+
+  function workerAvailable() {
+    return typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined';
+  }
+
+  function getWorker() {
+    if (wk) return wk;
+    var url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+    wk = new Worker(url, { type: 'module' });
+    wk.onmessage = function (e) {
+      var d = e.data;
+      if (d.type === 'progress') { if (wkProgress) wkProgress(d.p); return; }
+      var w = wkWaiting[d.id];
+      if (!w) return;
+      delete wkWaiting[d.id];
+      if (d.type === 'error') w.reject(new Error(d.error));
+      else w.resolve(d);
+    };
+    wk.onerror = function () {
+      // 스레드 자체가 죽으면 기다리던 작업을 모두 실패로 정리한다
+      Object.keys(wkWaiting).forEach(function (k) {
+        wkWaiting[k].reject(new Error('worker-failed')); delete wkWaiting[k];
+      });
+      try { wk.terminate(); } catch (e) {}
+      wk = null;
+    };
+    return wk;
+  }
+
+  function wkSend(msg, transfer) {
+    return new Promise(function (resolve, reject) {
+      var id = ++wkSeq;
+      wkWaiting[id] = { resolve: resolve, reject: reject };
+      msg.id = id;
+      try { getWorker().postMessage(msg, transfer || []); }
+      catch (e) { delete wkWaiting[id]; reject(e); }
+    });
+  }
+
+  function resetWorker() {
+    if (wk) { try { wk.terminate(); } catch (e) {} }
+    wk = null; wkWaiting = {};
+  }
+
   /** 모델을 준비한다. 이미 받아 뒀으면 캐시에서 즉시 올라온다. */
   function loadWhisper(onProgress) {
     if (whisper) return Promise.resolve(whisper);
@@ -5112,8 +5189,13 @@ input, textarea{ font:inherit; }
         whisperEta = 0;
       }
     }, 500);
-    whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
-      mod.env.allowLocalModels = false;
+    // 별도 스레드를 쓸 수 있으면 라이브러리도 그쪽에서 불러온다
+    var useWorker = workerAvailable();
+    var libP = useWorker ? Promise.resolve(null)
+                         : import(/* webpackIgnore: true */ WHISPER_LIB);
+
+    whisperLoading = libP.then(function (mod) {
+      if (mod) mod.env.allowLocalModels = false;
 
       var onProg = function (p) {
           if (!p) return;
@@ -5164,9 +5246,17 @@ input, textarea{ font:inherit; }
       // q4 는 일부 기기(특히 폰)의 GPU 커널에서 계산이 깨져
       // 뜻 없는 기호가 줄줄이 나오는 일이 있다. fp16 이 훨씬 안정적이다.
       var build = function (useGpu) {
-        return mod.pipeline('automatic-speech-recognition', m.id, useGpu
-          ? { device: 'webgpu', dtype: { encoder_model: 'fp16', decoder_model_merged: 'fp16' }, progress_callback: onProg }
-          : { device: 'wasm', dtype: 'q8', progress_callback: onProg })
+        var opts = useGpu
+          ? { device: 'webgpu', dtype: { encoder_model: 'fp16', decoder_model_merged: 'fp16' } }
+          : { device: 'wasm', dtype: 'q8' };
+
+        if (useWorker) {
+          wkProgress = onProg;
+          return wkSend({ type: 'load', lib: WHISPER_LIB, model: m.id, device: opts.device, dtype: opts.dtype })
+            .then(function () { whisperDevice = useGpu ? 'GPU' : 'CPU'; return 'worker'; });
+        }
+        opts.progress_callback = onProg;
+        return mod.pipeline('automatic-speech-recognition', m.id, opts)
           .then(function (pipe) { whisperDevice = useGpu ? 'GPU' : 'CPU'; return pipe; });
       };
 
@@ -5188,9 +5278,11 @@ input, textarea{ font:inherit; }
       if (!navigator.gpu || forceCpu) return withTimeout(build(false), LIMIT, 'CPU');
 
       return withTimeout(build(true), LIMIT, 'GPU').catch(function () {
+        if (useWorker) resetWorker();      // 반쯤 올라간 스레드를 버리고 새로 시작
         whisperFiles = {}; whisperInit = 0; whisperDone = 0;
         whisperBytes = null; whisperEta = 0;
         whisperPhase = 'download';
+        whisperLastProg = Date.now();
         return withTimeout(build(false), LIMIT, 'CPU');
       });
     }).then(function (pipe) {
@@ -5289,6 +5381,17 @@ input, textarea{ font:inherit; }
     return ((t.match(/[가-힣]/g) || []).length / t.length) < 0.25;
   }
 
+  /** 인식 실행. 별도 스레드가 있으면 그쪽에서 돌려 화면이 멈추지 않게 한다. */
+  function runWhisper(pcm, opts) {
+    if (whisper === 'worker') {
+      // 오디오는 복사하지 않고 소유권만 넘긴다 (큰 배열이라 복사가 비싸다)
+      var copy = new Float32Array(pcm);
+      return wkSend({ type: 'run', pcm: copy, opts: opts }, [copy.buffer])
+        .then(function (d) { return { text: d.text }; });
+    }
+    return whisper(pcm, opts);
+  }
+
   function pumpWhisper() {
     if (whisperBusy || !whisperQueue.length) return;
     whisperBusy = true;
@@ -5299,7 +5402,7 @@ input, textarea{ font:inherit; }
       .then(function () { return blobToPcm16k(job.blob); })
       .then(function (pcm) {
         pcmCache = pcm;
-        return whisper(pcm, {
+        return runWhisper(pcm, {
           language: job.lang === 'en' ? 'english' : 'korean',
           task: 'transcribe',
           chunk_length_s: 30,
@@ -5322,8 +5425,9 @@ input, textarea{ font:inherit; }
           save(K.forcecpu, true);
           whisper = null; whisperFiles = {}; whisperProg = 0; whisperPhase = '';
           if (job.onStage) job.onStage('이 기기의 GPU 결과가 불안정해 다시 처리합니다…');
+          resetWorker();
           return loadWhisper()
-            .then(function () { return whisper(pcmCache, {
+            .then(function () { return runWhisper(pcmCache, {
               language: job.lang === 'en' ? 'english' : 'korean',
               task: 'transcribe', chunk_length_s: 30, stride_length_s: 5,
               condition_on_previous_text: false, temperature: 0
