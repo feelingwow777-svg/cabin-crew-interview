@@ -2408,7 +2408,8 @@ input, textarea{ font:inherit; }
     meta:     'ccq.meta.v1',
     anmode:   'ccq.anmode.v1',
     wmodel:   'ccq.wmodel.v1',
-    forcecpu: 'ccq.forcecpu.v1'
+    forcecpu: 'ccq.forcecpu.v1',
+    wdone:    'ccq.wdone.v1'
   };
 
   function load(key, fallback) {
@@ -2770,6 +2771,13 @@ input, textarea{ font:inherit; }
       $('wModelNote').textContent = modelErr;
       refreshModelUsage();
       return;
+    } else if (isDownloaded(wModel)) {
+      // 파일은 기기에 있고, 메모리에 올리기만 하면 된다
+      v.className = 'modelbox__v is-ready';
+      v.textContent = '받아둠';
+      track.hidden = true;
+      btn.disabled = false;
+      label.textContent = '미리 불러오기 (내려받기 없음)';
     } else {
       v.className = 'modelbox__v';
       v.textContent = '아직 안 받음';
@@ -2787,6 +2795,12 @@ input, textarea{ font:inherit; }
       var d = e.usageDetails;
       var bytes = d && typeof d.caches === 'number' ? d.caches : null;
       $('modelUsage').textContent = bytes === null ? '' : (bytes > 1024 ? fmtBytes(bytes) : '없음');
+
+      // 브라우저가 저장소를 비웠는데 '받아둠'으로 남아 있으면 바로잡는다
+      if (bytes !== null && bytes < 1048576 && Object.keys(wDone).length && !whisper) {
+        wDone = {}; save(K.wdone, wDone);
+        syncModelBox();
+      }
     }).catch(function () { $('modelUsage').textContent = ''; });
   }
 
@@ -2800,7 +2814,10 @@ input, textarea{ font:inherit; }
       whisperProg = 0;
       whisperFiles = {};
       whisperDevice = '';
+      whisperPhase = '';
       modelErr = '';
+      wDone = {};                 // 파일을 지웠으니 '받아둠' 기록도 지운다
+      save(K.wdone, wDone);
     });
   }
 
@@ -5027,6 +5044,15 @@ input, textarea{ font:inherit; }
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
   var forceCpu = load(K.forcecpu, false) === true;   // GPU 결과가 깨진 기기 기억
+
+  /* 어떤 모델을 이미 내려받아 뒀는지.
+     whisper 변수는 '지금 메모리에 올라와 있는가'일 뿐이라,
+     새로고침하면 비어 있어도 파일은 기기에 그대로 남아 있다. */
+  var wDone = load(K.wdone, {});
+  if (!wDone || typeof wDone !== 'object' || Array.isArray(wDone)) wDone = {};
+
+  function markDownloaded(key) { wDone[key] = true; save(K.wdone, wDone); }
+  function isDownloaded(key) { return wDone[key] === true; }
   var whisperQueue = [], whisperBusy = false;
 
   function whisperReady() { return !!whisper; }
@@ -5096,6 +5122,8 @@ input, textarea{ font:inherit; }
       });
     }).then(function (pipe) {
       whisper = pipe; whisperLoading = null; whisperProg = 100;
+      whisperPhase = '';
+      markDownloaded(wModel);       // 이 모델은 기기에 남아 있다
       if (onProgress) onProgress(100);
       return pipe;
     }).catch(function (e) {
@@ -5484,7 +5512,7 @@ input, textarea{ font:inherit; }
     if (whisperReady() || whisperLoading) return;
     modelErr = '';
     buzz(10);
-    toast('내려받기를 시작했어요 — 화면을 켜 두세요');
+    toast(isDownloaded(wModel) ? '기기에 있는 모델을 불러옵니다' : '내려받기를 시작했어요 — 화면을 켜 두세요');
 
     var tick = setInterval(syncModelBox, 300);
     syncModelBox();
