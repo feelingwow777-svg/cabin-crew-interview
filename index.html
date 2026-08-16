@@ -260,6 +260,11 @@ input, textarea{ font:inherit; }
   height:100%; width:0%; border-radius:99px; background:var(--blue);
   transition:width .3s ease;
 }
+.modelbox__eta{
+  margin:0;
+  font-family:var(--t-mono); font-size:10.5px; letter-spacing:.03em;
+  font-variant-numeric:tabular-nums; color:var(--fog);
+}
 
 /* ---------- 답변 시간 다이얼 ---------- */
 .dialbox{ display:flex; flex-direction:column; gap:11px; }
@@ -1404,6 +1409,7 @@ input, textarea{ font:inherit; }
         <div class="modelbox__track" id="modelTrack" hidden>
           <div class="modelbox__bar" id="modelBar"></div>
         </div>
+        <p class="modelbox__eta" id="modelEta" hidden></p>
         <button class="btn btn--ghost" id="btnGetModel" style="width:100%;min-height:44px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
           <span id="btnGetModelLabel">지금 내려받기</span>
@@ -2738,6 +2744,7 @@ input, textarea{ font:inherit; }
     var v = $('modelState'), track = $('modelTrack'), bar = $('modelBar');
     var btn = $('btnGetModel'), label = $('btnGetModelLabel');
     var m = WHISPER_MODELS[wModel];
+    $('modelEta').hidden = true;
 
     document.querySelectorAll('#wModel .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(c.dataset.w === wModel));
@@ -2759,9 +2766,21 @@ input, textarea{ font:inherit; }
       track.hidden = false;
       bar.style.width = (initing ? 100 : whisperProg) + '%';
       btn.disabled = true;
-      label.textContent = initing
-        ? '기기에 올리는 중… (잠시 멈춘 듯 보일 수 있어요)'
-        : '내려받는 중…';
+      label.textContent = initing ? '기기에 올리는 중…' : '내려받는 중…';
+
+      // 얼마나 받았고 얼마나 더 기다려야 하는지 알려 준다
+      $('modelEta').hidden = false;
+      if (initing) {
+        $('modelEta').textContent = '내려받기 완료 · 사용 준비 중 (보통 10~60초, 이때 진행률은 멈춰 보입니다)';
+      } else if (whisperBytes) {
+        var got = fmtBytes(whisperBytes.loaded), all = fmtBytes(whisperBytes.total);
+        var spd = whisperSpeed ? ' · ' + fmtBytes(whisperSpeed) + '/s' : '';
+        var eta = whisperEta ? ' · 약 ' + fmtDur(whisperEta) + ' 남음' : '';
+        $('modelEta').textContent = got + ' / ' + all + spd + eta;
+      } else {
+        $('modelEta').textContent = '시작하는 중…';
+      }
+      return;
     } else if (modelErr) {
       v.className = 'modelbox__v is-err';
       v.textContent = '실패';
@@ -3804,11 +3823,17 @@ input, textarea{ font:inherit; }
         return;
       }
       if (!whisperReady()) {                            // 모델 준비 단계
-        $('ansPendingTxt').textContent = whisperPhase === 'init'
-          ? '모델을 기기에 올리는 중…'
-          : '음성인식 모델 내려받는 중…';
-        $('ansPendingPct').textContent = whisperPhase === 'init' ? '' : whisperProg + '%';
-        $('ansPendingBar').style.width = (whisperPhase === 'init' ? 100 : whisperProg) + '%';
+        if (whisperPhase === 'init') {
+          $('ansPendingTxt').textContent = '모델을 기기에 올리는 중… (10~60초)';
+          $('ansPendingPct').textContent = '';
+          $('ansPendingBar').style.width = '100%';
+        } else {
+          $('ansPendingTxt').textContent = '음성인식 모델 내려받는 중'
+            + (whisperEta ? ' · 약 ' + fmtDur(whisperEta) + ' 남음' : '')
+            + (whisperBytes ? ' (' + fmtBytes(whisperBytes.loaded) + '/' + fmtBytes(whisperBytes.total) + ')' : '');
+          $('ansPendingPct').textContent = whisperProg + '%';
+          $('ansPendingBar').style.width = whisperProg + '%';
+        }
         started = Date.now();                           // 분석 시작 시점을 다시 잡는다
         return;
       }
@@ -5040,6 +5065,7 @@ input, textarea{ font:inherit; }
 
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
   var whisperPhase = '';   // 'download' | 'init'
+  var whisperBytes = null, whisperSpeed = 0, whisperEta = 0, whisperStartAt = 0;
   var wModel = load(K.wmodel, 'small');
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
@@ -5063,6 +5089,8 @@ input, textarea{ font:inherit; }
     if (whisperLoading) return whisperLoading;
 
     whisperFiles = {};
+    whisperBytes = null; whisperSpeed = 0; whisperEta = 0;
+    whisperStartAt = Date.now();
     whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
       mod.env.allowLocalModels = false;
 
@@ -5076,6 +5104,14 @@ input, textarea{ font:inherit; }
               l += whisperFiles[k].loaded; t += whisperFiles[k].total;
             });
             if (t) whisperProg = Math.min(99, Math.round((l / t) * 100));
+
+            // 받은 양과 걸린 시간으로 속도와 남은 시간을 계산한다
+            whisperBytes = { loaded: l, total: t };
+            var elapsed = (Date.now() - whisperStartAt) / 1000;
+            if (elapsed > 1 && l > 0) {
+              whisperSpeed = l / elapsed;                       // bytes/sec
+              whisperEta = Math.max(0, Math.round((t - l) / whisperSpeed));
+            }
             if (onProgress) onProgress(whisperProg);
           }
           // 내려받기가 끝나면 기기에 올리는 단계로 넘어간다.
@@ -5514,14 +5550,14 @@ input, textarea{ font:inherit; }
     buzz(10);
     toast(isDownloaded(wModel) ? '기기에 있는 모델을 불러옵니다' : '내려받기를 시작했어요 — 화면을 켜 두세요');
 
-    var tick = setInterval(syncModelBox, 300);
+    var tick = setInterval(syncModelBox, 250);
     syncModelBox();
 
     loadWhisper().then(function () {
       clearInterval(tick);
       syncModelBox();
       buzz(20);
-      toast('음성인식 모델 준비 완료');
+      toast('음성인식 모델 준비 완료 · 이제 바로 쓸 수 있어요');
     }).catch(function (e) {
       clearInterval(tick);
       modelErr = String(e && e.message || e).slice(0, 140);
