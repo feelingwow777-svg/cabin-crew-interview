@@ -5202,19 +5202,17 @@ input, textarea{ font:inherit; }
       .catch(function () { workerGpu = false; return false; });
   }
 
-  /** 이번에 실제로 GPU 를 쓸지. */
+  /** 이번에 실제로 GPU 를 쓸지. GPU 는 항상 화면 스레드에서 돈다. */
   function willUseGpu() {
     if (!navigator.gpu) return false;
     if (wDevice === 'cpu') return false;
     if (wDevice === 'gpu') return true;
-    // 자동: GPU 를 쓰면 화면이 멈추는 기기에서는 끊김 없는 쪽을 고른다
-    if (workerGpu === false) return false;
     return !forceCpu;
   }
 
-  /** GPU 를 쓰려면 화면이 멈추는 것을 감수해야 하는 기기인지 */
+  /** GPU 는 화면 스레드에서 돌므로 분석 중 화면이 잠시 둔해질 수 있다 */
   function gpuNeedsMainThread() {
-    return !!navigator.gpu && workerGpu === false;
+    return !!navigator.gpu;
   }
 
   /* 어떤 모델을 이미 내려받아 뒀는지.
@@ -5330,16 +5328,15 @@ input, textarea{ font:inherit; }
         whisperEta = 0;
       }
     }, 500);
-    // 스레드에서 GPU 가 되는지 '먼저 확인하고' 시작한다.
-    // 확인 전에 시작하면 GPU 를 골랐어도 스레드가 실패해 CPU 로 새어 나간다.
-    var useWorker, wantGpu;
+    // 중요: WebGPU 를 백그라운드 스레드에서 돌리면 결과가 깨진다 (실측 확인).
+    // 그래서 GPU 는 반드시 화면 스레드에서, CPU 만 스레드에서 돌린다.
+    // 분석은 어차피 녹음이 모두 끝난 뒤에 하므로 화면이 잠시 둔해져도 지장이 없다.
+    var wantGpu = willUseGpu();
+    var useWorker = workerAvailable() && !wantGpu;
+    var libP = useWorker ? Promise.resolve(null)
+                         : import(/* webpackIgnore: true */ WHISPER_LIB);
 
-    whisperLoading = probeWorkerGpu().then(function () {
-      wantGpu = willUseGpu();
-      // GPU 를 쓰기로 했는데 스레드에서 GPU 가 안 되면, 그때만 화면 스레드에서 돌린다.
-      useWorker = workerAvailable() && !(wantGpu && workerGpu === false);
-      return useWorker ? null : import(/* webpackIgnore: true */ WHISPER_LIB);
-    }).then(function (mod) {
+    whisperLoading = libP.then(function (mod) {
       if (mod) mod.env.allowLocalModels = false;
 
       var onProg = function (p) {
