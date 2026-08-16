@@ -4484,8 +4484,9 @@ input, textarea{ font:inherit; }
     }
 
     var withText = exam.results.filter(function (r) { return r.content; });
+    var withAny  = exam.results.filter(function (r) { return r.content || r.sttErr; });
 
-    if (withText.length === 0 && !pending) {
+    if (withAny.length === 0 && !pending) {
       var lastDiag = null, lastErr = '';
       for (var di = exam.results.length - 1; di >= 0; di--) {
         if (exam.results[di].sttDiag) { lastDiag = exam.results[di].sttDiag; break; }
@@ -4504,14 +4505,21 @@ input, textarea{ font:inherit; }
       return;
     }
 
-    withText.forEach(function (r, i) {
+    // 성공/실패 가리지 않고 모든 문항을 보여 준다.
+    // 실패한 문항이 조용히 사라지면 사용자는 '안 된다'고만 느끼게 된다.
+    exam.results.forEach(function (r, i) {
+      if (r.pending) return;
       var head = document.createElement('li');
       head.className = 'qhead';
       head.innerHTML = '<span class="fb__t"></span><span class="fb__d qscript"></span>';
       head.querySelector('.fb__t').textContent = (i + 1) + '. ' + r.item.q;
-      head.querySelector('.qscript').textContent = '“' + r.content.transcript + '”';
+      head.querySelector('.qscript').textContent = r.content
+        ? '“' + r.content.transcript + '”'
+        : (r.sttErr ? '받아쓰기 실패 — ' + r.sttErr
+                    : '말소리가 인식되지 않았습니다.');
       cul.appendChild(head);
 
+      if (!r.content) return;
       var fbs = contentFeedback(r.content, r.item);
       var order = { bad: 0, warn: 1, good: 2 };
       fbs.sort(function (a, b) { return order[a.lv] - order[b.lv]; });
