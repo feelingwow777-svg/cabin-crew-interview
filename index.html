@@ -793,12 +793,23 @@ input, textarea{ font:inherit; }
 .ansscript.is-empty{ font-style:normal; color:var(--fog-2); }
 
 .anspend{
-  display:flex; align-items:center; gap:9px;
+  display:flex; flex-direction:column; gap:8px;
   padding:11px 13px; margin-bottom:9px;
   border:1px solid color-mix(in srgb, var(--blue) 32%, transparent);
   border-radius:var(--r-md);
   background:color-mix(in srgb, var(--blue) 9%, transparent);
   font-size:12.5px; color:var(--paper);
+}
+.anspend__row{ display:flex; align-items:center; gap:9px; }
+.anspend__row span:nth-child(2){ flex:1 1 auto; min-width:0; }
+.anspend__pct{
+  flex:none; font-family:var(--t-mono); font-weight:700;
+  font-variant-numeric:tabular-nums; color:var(--blue);
+}
+.anspend__track{ height:5px; border-radius:99px; background:rgba(255,255,255,.10); overflow:hidden; }
+.anspend__bar{
+  height:100%; width:0%; border-radius:99px; background:var(--blue);
+  transition:width .3s ease;
 }
 .anspend__spin{
   width:15px; height:15px; flex:none; border-radius:50%;
@@ -1714,8 +1725,12 @@ input, textarea{ font:inherit; }
     <div class="sheet__body">
       <p class="ansq" id="ansQ"></p>
       <div class="anspend" id="ansPending" hidden>
-        <span class="anspend__spin"></span>
-        <span id="ansPendingTxt">분석 중…</span>
+        <div class="anspend__row">
+          <span class="anspend__spin"></span>
+          <span id="ansPendingTxt">분석 중…</span>
+          <span class="anspend__pct" id="ansPendingPct"></span>
+        </div>
+        <div class="anspend__track"><div class="anspend__bar" id="ansPendingBar"></div></div>
       </div>
       <div class="ansscript" id="ansScript"></div>
 
@@ -2392,7 +2407,8 @@ input, textarea{ font:inherit; }
     exams:    'ccq.exams.v1',
     meta:     'ccq.meta.v1',
     anmode:   'ccq.anmode.v1',
-    wmodel:   'ccq.wmodel.v1'
+    wmodel:   'ccq.wmodel.v1',
+    forcecpu: 'ccq.forcecpu.v1'
   };
 
   function load(key, fallback) {
@@ -3734,7 +3750,7 @@ input, textarea{ font:inherit; }
         showAnswerReport(item, transcript, res.metrics, res.durationMs, null);
 
         // 녹음이 끝난 지금 그 파일을 받아써서 내용 분석까지 채워 넣는다
-        setAnsPending(true, '모델 준비 중…');
+        setAnsPending(true, '준비 중…', res.durationMs / 1000);
         enqueueTranscribe(res.blob, item && item.t === '영어' ? 'en' : 'ko', function (text, err) {
           setAnsPending(false);
           if (err) {
@@ -3745,23 +3761,47 @@ input, textarea{ font:inherit; }
           meta.transcript = text;
           recAdd(meta, res.blob).catch(function () {});   // 받아쓴 내용을 녹음함에도 남긴다
           showAnswerReport(item, text, res.metrics, res.durationMs, null);
-        });
+        }, function (stage) { ansStage = stage; });
       });
     }).catch(function () { toast('녹음을 저장하지 못했어요'); });
   }
 
-  function setAnsPending(on, label) {
+  var ansPendTick = null, ansStage = '';
+
+  function setAnsPending(on, label, durSec) {
     $('ansPending').hidden = !on;
     if (label) $('ansPendingTxt').textContent = label;
-    if (on) {
-      // 모델 내려받는 동안 진행률을 보여 준다
-      var tick = setInterval(function () {
-        if ($('ansPending').hidden) { clearInterval(tick); return; }
-        $('ansPendingTxt').textContent = whisperReady()
-          ? '답변을 분석하는 중… (답변 길이의 2~4배 걸립니다)'
-          : '음성인식 모델 준비 중… ' + whisperProg + '%';
-      }, 500);
-    }
+    if (ansPendTick) { clearInterval(ansPendTick); ansPendTick = null; }
+    if (!on) { stopJobProgress(); ansStage = ''; return; }
+
+    var started = Date.now();
+    var expectMs = (durSec || 30) * (whisperDevice === 'CPU' ? 6 : 1.2) * 1000;
+
+    ansPendTick = setInterval(function () {
+      if ($('ansPending').hidden) { clearInterval(ansPendTick); ansPendTick = null; return; }
+
+      if (ansStage) {                                   // 재시도 같은 특수 상황
+        $('ansPendingTxt').textContent = ansStage;
+        $('ansPendingPct').textContent = '';
+        $('ansPendingBar').style.width = '100%';
+        return;
+      }
+      if (!whisperReady()) {                            // 모델 준비 단계
+        $('ansPendingTxt').textContent = whisperPhase === 'init'
+          ? '모델을 기기에 올리는 중…'
+          : '음성인식 모델 내려받는 중…';
+        $('ansPendingPct').textContent = whisperPhase === 'init' ? '' : whisperProg + '%';
+        $('ansPendingBar').style.width = (whisperPhase === 'init' ? 100 : whisperProg) + '%';
+        started = Date.now();                           // 분석 시작 시점을 다시 잡는다
+        return;
+      }
+      // 실제 분석 진행률
+      var pct = Math.min(95, Math.round(((Date.now() - started) / expectMs) * 100));
+      var left = Math.max(0, Math.round((expectMs - (Date.now() - started)) / 1000));
+      $('ansPendingTxt').textContent = '답변을 분석하는 중' + (left ? ' · 약 ' + left + '초 남음' : '');
+      $('ansPendingPct').textContent = pct + '%';
+      $('ansPendingBar').style.width = pct + '%';
+    }, 300);
   }
 
   /** 녹음을 마치면 그 자리에서 내용·목소리 분석을 보여 준다 */
@@ -4268,7 +4308,9 @@ input, textarea{ font:inherit; }
     $('exNextLabel').textContent = '정리 중…';
   }
 
-  /** 답변 내용 영역. 정밀 모드에서는 분석이 끝날 때마다 다시 불린다. */
+  var examPendTick = null;
+
+  /** 답변 내용 영역. 분석이 끝날 때마다 다시 불린다. */
   function renderExamContent() {
     var cul = $('exContent');
     cul.innerHTML = '';
@@ -4282,8 +4324,22 @@ input, textarea{ font:inherit; }
       lp.querySelector('.fb__t').textContent = '분석 중 — 남은 문항 ' + pending + '개';
       lp.querySelector('.fb__d').textContent = whisperReady()
         ? '기기 안에서 답변을 글로 옮기는 중입니다. 끝나는 대로 이 화면이 자동으로 채워집니다.'
-        : '음성인식 모델을 준비하는 중입니다 (' + whisperProg + '%). 처음 한 번만 걸립니다.';
+        : (whisperPhase === 'init'
+            ? '음성인식 모델을 기기에 올리는 중입니다. 처음 한 번만 걸립니다.'
+            : '음성인식 모델 내려받는 중 ' + whisperProg + '% — 처음 한 번만 걸립니다.');
       cul.appendChild(lp);
+
+      // 진행 상황이 멈춘 듯 보이지 않게 주기적으로 다시 그린다
+      if (!examPendTick) {
+        examPendTick = setInterval(function () {
+          if ($('exReport').hidden || !exam.results.some(function (r) { return r.pending; })) {
+            clearInterval(examPendTick); examPendTick = null;
+            if (!$('exReport').hidden) renderExamContent();
+            return;
+          }
+          renderExamContent();
+        }, 1200);
+      }
     }
 
     var withText = exam.results.filter(function (r) { return r.content; });
@@ -4970,6 +5026,7 @@ input, textarea{ font:inherit; }
   var wModel = load(K.wmodel, 'small');
   if (!WHISPER_MODELS[wModel]) wModel = 'small';
   var whisperDevice = '';
+  var forceCpu = load(K.forcecpu, false) === true;   // GPU 결과가 깨진 기기 기억
   var whisperQueue = [], whisperBusy = false;
 
   function whisperReady() { return !!whisper; }
@@ -5006,14 +5063,11 @@ input, textarea{ font:inherit; }
 
       var m = WHISPER_MODELS[wModel];
 
-      // 큰 모델일수록 메모리에서 막힌다. 모델마다 가벼운 정밀도를 쓴다.
-      var gpuDtype = m.heavy
-        ? { encoder_model: 'fp16', decoder_model_merged: 'q4' }
-        : { encoder_model: 'fp32', decoder_model_merged: 'q4' };
-
+      // q4 는 일부 기기(특히 폰)의 GPU 커널에서 계산이 깨져
+      // 뜻 없는 기호가 줄줄이 나오는 일이 있다. fp16 이 훨씬 안정적이다.
       var build = function (useGpu) {
         return mod.pipeline('automatic-speech-recognition', m.id, useGpu
-          ? { device: 'webgpu', dtype: gpuDtype, progress_callback: onProg }
+          ? { device: 'webgpu', dtype: { encoder_model: 'fp16', decoder_model_merged: 'fp16' }, progress_callback: onProg }
           : { device: 'wasm', dtype: 'q8', progress_callback: onProg })
           .then(function (pipe) { whisperDevice = useGpu ? 'GPU' : 'CPU'; return pipe; });
       };
@@ -5030,13 +5084,12 @@ input, textarea{ font:inherit; }
         });
       };
 
-      var LIMIT = m.heavy ? 300000 : 180000;
+      var LIMIT = 240000;
 
-      if (!navigator.gpu) return withTimeout(build(false), LIMIT, 'CPU');
+      // 이 기기의 GPU 가 결과를 망가뜨린 적이 있으면 처음부터 CPU 로 간다
+      if (!navigator.gpu || forceCpu) return withTimeout(build(false), LIMIT, 'CPU');
 
-      return withTimeout(build(true), LIMIT, 'GPU').catch(function (e) {
-        // GPU 로 안 되면 CPU 로 한 번 더. 큰 모델은 CPU 로도 대개 실패하므로 그때는 알려 준다.
-        if (m.heavy) throw new Error('이 기기의 메모리로는 「최상」 모델을 올리지 못했습니다. 「정확 250MB」를 사용해 주세요.');
+      return withTimeout(build(true), LIMIT, 'GPU').catch(function () {
         whisperFiles = {};
         whisperPhase = 'download';
         return withTimeout(build(false), LIMIT, 'CPU');
@@ -5093,19 +5146,58 @@ input, textarea{ font:inherit; }
   }
 
   /** 한 번에 하나씩만 돌린다. 동시에 돌리면 느린 기기가 멈춘다. */
-  function enqueueTranscribe(blob, lang, onDone) {
-    whisperQueue.push({ blob: blob, lang: lang, onDone: onDone });
+  function enqueueTranscribe(blob, lang, onDone, onStage) {
+    whisperQueue.push({ blob: blob, lang: lang, onDone: onDone, onStage: onStage });
     pumpWhisper();
+  }
+
+  /* 분석 진행률.
+     Whisper 는 30초 구간씩 처리하므로 구간이 끝날 때마다 진행률이 올라간다.
+     그 사이에도 멈춘 듯 보이지 않게 남은 시간으로 부드럽게 채운다. */
+  var jobProg = { pct: 0, label: '', timer: null };
+
+  function startJobProgress(durSec, onTick) {
+    stopJobProgress();
+    var chunks = Math.max(1, Math.ceil(durSec / 30));
+    // 기기 속도를 모르니 실측 배속으로 예상 시간을 잡는다 (GPU 1배, CPU 6배)
+    var expected = durSec * (whisperDevice === 'CPU' ? 6 : 1.2) * 1000;
+    var started = Date.now();
+    jobProg.pct = 0;
+    jobProg.timer = setInterval(function () {
+      var ratio = (Date.now() - started) / expected;
+      // 끝나기 전에 100% 가 되지 않도록 95% 에서 멈춘다
+      jobProg.pct = Math.min(95, Math.round(ratio * 100));
+      if (onTick) onTick(jobProg.pct, chunks);
+    }, 250);
+  }
+
+  function stopJobProgress() {
+    if (jobProg.timer) { clearInterval(jobProg.timer); jobProg.timer = null; }
+  }
+
+  /**
+   * 결과가 계산 오류로 깨졌는지 본다.
+   * 일부 기기의 GPU 에서 뜻 없는 기호가 줄줄이 나오는 일이 있어,
+   * 그런 결과를 사용자에게 그대로 보여주지 않기 위한 검사다.
+   */
+  function looksBroken(text, lang) {
+    if (!text) return false;
+    var t = text.replace(/\s/g, '');
+    if (t.length < 12) return false;
+    if (lang === 'en') return ((t.match(/[A-Za-z]/g) || []).length / t.length) < 0.4;
+    return ((t.match(/[가-힣]/g) || []).length / t.length) < 0.25;
   }
 
   function pumpWhisper() {
     if (whisperBusy || !whisperQueue.length) return;
     whisperBusy = true;
     var job = whisperQueue.shift();
+    var pcmCache = null;
 
     loadWhisper()
       .then(function () { return blobToPcm16k(job.blob); })
       .then(function (pcm) {
+        pcmCache = pcm;
         return whisper(pcm, {
           language: job.lang === 'en' ? 'english' : 'korean',
           task: 'transcribe',
@@ -5119,8 +5211,27 @@ input, textarea{ font:inherit; }
           temperature: 0
         });
       })
-      .then(function (r) { job.onDone((r && r.text ? r.text : '').trim(), null); })
-      .catch(function (e) { job.onDone('', String(e && e.message || e).slice(0, 120)); })
+      .then(function (r) {
+        var text = (r && r.text ? r.text : '').trim();
+
+        // GPU 결과가 깨졌으면 CPU 로 한 번 더 시도한다.
+        // 이 기기에서는 다음부터 계속 CPU 를 쓰도록 기억해 둔다.
+        if (looksBroken(text, job.lang) && whisperDevice === 'GPU' && !forceCpu) {
+          forceCpu = true;
+          save(K.forcecpu, true);
+          whisper = null; whisperFiles = {}; whisperProg = 0; whisperPhase = '';
+          if (job.onStage) job.onStage('이 기기의 GPU 결과가 불안정해 다시 처리합니다…');
+          return loadWhisper()
+            .then(function () { return whisper(pcmCache, {
+              language: job.lang === 'en' ? 'english' : 'korean',
+              task: 'transcribe', chunk_length_s: 30, stride_length_s: 5,
+              condition_on_previous_text: false, temperature: 0
+            }); })
+            .then(function (r2) { job.onDone((r2 && r2.text ? r2.text : '').trim(), null); });
+        }
+        job.onDone(text, null);
+      })
+      .catch(function (e) { job.onDone('', String(e && e.message || e).slice(0, 140)); })
       .then(function () { whisperBusy = false; pumpWhisper(); });
   }
 
