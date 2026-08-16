@@ -1385,6 +1385,12 @@ input, textarea{ font:inherit; }
           <span class="modelbox__k">음성인식 모델</span>
           <span class="modelbox__v" id="modelState">확인 중…</span>
         </div>
+        <div class="chips" id="wModel">
+          <button class="chip" data-w="base">가벼움 80MB</button>
+          <button class="chip" data-w="small">정확 250MB</button>
+          <button class="chip" data-w="turbo">최상 800MB</button>
+        </div>
+        <p class="prefs__note" id="wModelNote"></p>
         <div class="modelbox__track" id="modelTrack" hidden>
           <div class="modelbox__bar" id="modelBar"></div>
         </div>
@@ -2382,7 +2388,8 @@ input, textarea{ font:inherit; }
     onlyTodo: 'ccq.onlytodo.v1',
     exams:    'ccq.exams.v1',
     meta:     'ccq.meta.v1',
-    anmode:   'ccq.anmode.v1'
+    anmode:   'ccq.anmode.v1',
+    wmodel:   'ccq.wmodel.v1'
   };
 
   function load(key, fallback) {
@@ -2710,10 +2717,18 @@ input, textarea{ font:inherit; }
 
     var v = $('modelState'), track = $('modelTrack'), bar = $('modelBar');
     var btn = $('btnGetModel'), label = $('btnGetModelLabel');
+    var m = WHISPER_MODELS[wModel];
+
+    document.querySelectorAll('#wModel .chip').forEach(function (c) {
+      c.setAttribute('aria-pressed', String(c.dataset.w === wModel));
+      c.disabled = !!whisperLoading;
+    });
+    $('wModelNote').textContent = m.note + (wModel === 'turbo'
+      ? ' · 저사양 폰에서는 실패할 수 있습니다' : '');
 
     if (whisperReady()) {
       v.className = 'modelbox__v is-ready';
-      v.textContent = '준비 완료';
+      v.textContent = '준비 완료' + (whisperDevice ? ' · ' + whisperDevice : '');
       track.hidden = true;
       btn.disabled = true;
       label.textContent = '기기에 저장됨 — 바로 사용 가능';
@@ -2735,8 +2750,20 @@ input, textarea{ font:inherit; }
       v.textContent = '아직 안 받음';
       track.hidden = true;
       btn.disabled = false;
-      label.textContent = '지금 내려받기 (약 40MB)';
+      label.textContent = '지금 내려받기 (약 ' + m.mb + 'MB)';
     }
+  }
+
+  function setWModel(k) {
+    if (!WHISPER_MODELS[k] || whisperLoading || k === wModel) return;
+    wModel = k;
+    save(K.wmodel, wModel);
+    whisper = null;            // 모델이 바뀌었으니 다시 준비해야 한다
+    whisperProg = 0;
+    whisperFiles = {};
+    modelErr = '';
+    syncModelBox();
+    buzz(8);
   }
 
 
@@ -4893,10 +4920,20 @@ input, textarea{ font:inherit; }
      그래서 녹음과 답변 내용 분석을 동시에 얻을 수 있다.
      대신 모델을 한 번 내려받아야 하고, 처리에 시간이 걸린다.
      ============================================================ */
-  var WHISPER_LIB   = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5';
-  var WHISPER_MODEL = 'onnx-community/whisper-tiny';
+  var WHISPER_LIB = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5';
+
+  /* tiny 는 한국어 정확도가 크게 떨어져 기본에서 제외했다.
+     base 를 기본으로 쓰고, 더 정확한 small 을 선택지로 둔다. */
+  var WHISPER_MODELS = {
+    base:  { id: 'onnx-community/whisper-base',           label: '가벼움', mb: 80,   note: '데이터가 부담될 때' },
+    small: { id: 'onnx-community/whisper-small',          label: '정확',   mb: 250,  note: '권장 — 한국어가 또렷하게 잡힙니다' },
+    turbo: { id: 'onnx-community/whisper-large-v3-turbo', label: '최상',   mb: 800,  note: '가장 정확하지만 기기가 버텨야 합니다' }
+  };
 
   var whisper = null, whisperLoading = null, whisperProg = 0, whisperFiles = {};
+  var wModel = load(K.wmodel, 'small');
+  if (!WHISPER_MODELS[wModel]) wModel = 'small';
+  var whisperDevice = '';
   var whisperQueue = [], whisperBusy = false;
 
   function whisperReady() { return !!whisper; }
@@ -4906,12 +4943,11 @@ input, textarea{ font:inherit; }
     if (whisper) return Promise.resolve(whisper);
     if (whisperLoading) return whisperLoading;
 
+    whisperFiles = {};
     whisperLoading = import(/* webpackIgnore: true */ WHISPER_LIB).then(function (mod) {
       mod.env.allowLocalModels = false;
-      return mod.pipeline('automatic-speech-recognition', WHISPER_MODEL, {
-        dtype: 'q8',
-        device: 'wasm',
-        progress_callback: function (p) {
+
+      var onProg = function (p) {
           if (!p) return;
           // 파일이 여러 개라 파일별 진행률을 합산해 전체 비율을 만든다
           if (p.status === 'progress' && p.file && p.total) {
@@ -4923,8 +4959,22 @@ input, textarea{ font:inherit; }
             if (t) whisperProg = Math.min(99, Math.round((l / t) * 100));
             if (onProgress) onProgress(whisperProg);
           }
-        }
-      });
+        };
+
+      var id = WHISPER_MODELS[wModel].id;
+
+      // GPU 가 있으면 훨씬 빠르다. 실패하면 조용히 WASM 으로 되돌아간다.
+      var tryGpu = !!navigator.gpu;
+      var build = function (useGpu) {
+        return mod.pipeline('automatic-speech-recognition', id, useGpu
+          ? { device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, progress_callback: onProg }
+          : { device: 'wasm', dtype: 'q8', progress_callback: onProg })
+          .then(function (pipe) { whisperDevice = useGpu ? 'GPU' : 'CPU'; return pipe; });
+      };
+
+      return tryGpu
+        ? build(true).catch(function () { whisperFiles = {}; return build(false); })
+        : build(false);
     }).then(function (pipe) {
       whisper = pipe; whisperLoading = null; whisperProg = 100;
       if (onProgress) onProgress(100);
@@ -4948,7 +4998,23 @@ input, textarea{ font:inherit; }
         src.connect(off.destination);
         src.start();
         return off.startRendering();
-      }).then(function (rendered) { return rendered.getChannelData(0); });
+      }).then(function (rendered) {
+        var pcm = rendered.getChannelData(0);
+
+        // 녹음은 목소리 크기를 정직하게 재려고 자동 이득을 꺼 두었다.
+        // 그 상태의 작은 소리를 그대로 넣으면 인식이 급격히 나빠지므로,
+        // 받아쓰기용으로만 크기를 키워서 넣는다.
+        var peak = 0;
+        for (var i = 0; i < pcm.length; i++) {
+          var a = pcm[i] < 0 ? -pcm[i] : pcm[i];
+          if (a > peak) peak = a;
+        }
+        if (peak > 0.0001 && peak < 0.95) {
+          var g = Math.min(0.95 / peak, 12);      // 과하게 키워 잡음까지 부풀리지 않는다
+          for (var j = 0; j < pcm.length; j++) pcm[j] *= g;
+        }
+        return pcm;
+      });
     });
   }
 
@@ -4970,7 +5036,12 @@ input, textarea{ font:inherit; }
           language: job.lang === 'en' ? 'english' : 'korean',
           task: 'transcribe',
           chunk_length_s: 30,
-          stride_length_s: 5
+          stride_length_s: 5,
+          // 같은 말이 무한히 반복되는 환청을 억제한다
+          no_repeat_ngram_size: 6,
+          // 앞 문장을 참고하지 않게 해 한 번 어긋나면 계속 끌려가는 것을 막는다
+          condition_on_previous_text: false,
+          temperature: 0
         });
       })
       .then(function (r) { job.onDone((r && r.text ? r.text : '').trim(), null); })
@@ -5205,6 +5276,11 @@ input, textarea{ font:inherit; }
   $('exScope').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
     exam.scope = c.dataset.scope; syncExamSetup(); buzz(8);
+  });
+
+  $('wModel').addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    setWModel(c.dataset.w);
   });
 
   $('btnGetModel').addEventListener('click', function () {
