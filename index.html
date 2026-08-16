@@ -1402,8 +1402,8 @@ input, textarea{ font:inherit; }
           <span class="modelbox__v" id="modelState">—</span>
         </div>
         <div class="chips" id="wModel">
-          <button class="chip" data-w="base">가벼움</button>
-          <button class="chip" data-w="small">정확</button>
+          <button class="chip" data-w="base">가벼움 (80~160MB)</button>
+          <button class="chip" data-w="small">정확 (240~470MB)</button>
         </div>
         <p class="prefs__note" id="wModelNote"></p>
         <div class="modelbox__track" id="modelTrack" hidden>
@@ -2748,31 +2748,12 @@ input, textarea{ font:inherit; }
     var m = WHISPER_MODELS[wModel];
     $('modelEta').hidden = true;
 
-    // 이 기기가 받게 될 종류 (GPU 가 있으면 고정밀, 없으면 경량)
-    var gpu = willUseGpu();
-
-    // 받아본 적이 있으면 실측 용량, 없으면 추정 용량
-    var sizeOf = function (key) {
-      var known = knownSizeMb(key, gpu);
-      var mm = WHISPER_MODELS[key];
-      return known !== null ? { mb: Math.round(known), exact: true }
-                            : { mb: gpu ? mm.gpuMb : mm.cpuMb, exact: false };
-    };
-    var mine = sizeOf(wModel);
-    var mb = mine.mb;
-
     document.querySelectorAll('#wModel .chip').forEach(function (c) {
-      var s = sizeOf(c.dataset.w);
-      c.textContent = WHISPER_MODELS[c.dataset.w].label + ' '
-        + (s.exact ? '' : '약 ') + s.mb + 'MB';
       c.setAttribute('aria-pressed', String(c.dataset.w === wModel));
       c.disabled = !!whisperLoading;
     });
     $('wModelNote').textContent = m.note;
-
-    $('wDeviceNote').textContent =
-      (gpu ? 'GPU 로 처리합니다 — 빠릅니다.' : 'CPU 로 처리합니다 — 느리지만 인식 품질은 같습니다.')
-      + ' 기기에 맞는 파일을 자동으로 받습니다.';
+    $('wDeviceNote').textContent = '기기에 맞는 파일을 자동으로 받습니다.';
 
     if (whisperReady()) {
       v.className = 'modelbox__v is-ready';
@@ -2825,7 +2806,7 @@ input, textarea{ font:inherit; }
       v.textContent = '아직 안 받음';
       track.hidden = true;
       btn.disabled = false;
-      label.textContent = '지금 내려받기 (약 ' + mb + 'MB · ' + (gpu ? 'GPU용' : 'CPU용') + ')';
+      label.textContent = '지금 내려받기';
     }
     refreshModelUsage();
   }
@@ -5163,17 +5144,6 @@ input, textarea{ font:inherit; }
      GPU 를 쓸 수 있으면 GPU, 아니면 CPU. 사용자가 고를 것이 없다. */
   var wDevice = 'auto';
 
-  /* 실제로 받은 용량 기록. 추정치 대신 진짜 숫자를 보여주기 위해서다.
-     키는 '모델:방식' (예: small:gpu) */
-  var wSizes = load(K.wsize, {});
-  if (!wSizes || typeof wSizes !== 'object' || Array.isArray(wSizes)) wSizes = {};
-
-  function sizeKey(model, gpu) { return model + ':' + (gpu ? 'gpu' : 'cpu'); }
-
-  function knownSizeMb(model, gpu) {
-    var v = wSizes[sizeKey(model, gpu)];
-    return typeof v === 'number' && v > 0 ? v : null;
-  }
 
   /* 화면 스레드에 GPU 가 있어도 백그라운드 스레드에서는 못 쓰는 브라우저가 있다.
      실제로 물어봐서 확인한다. null = 아직 확인 전. */
@@ -5401,12 +5371,6 @@ input, textarea{ font:inherit; }
       whisper = pipe; whisperLoading = null; whisperProg = 100;
       whisperPhase = '';
       markDownloaded(wModel);       // 이 모델은 기기에 남아 있다
-
-      // 실제로 받은 용량을 기록해 다음부터는 정확한 숫자를 보여 준다
-      if (whisperBytes && whisperBytes.total > 0) {
-        wSizes[sizeKey(wModel, whisperDevice === 'GPU')] = +(whisperBytes.total / 1048576).toFixed(1);
-        save(K.wsize, wSizes);
-      }
       if (onProgress) onProgress(100);
       return pipe;
     }).catch(function (e) {
