@@ -2773,15 +2773,23 @@ input, textarea{ font:inherit; }
       c.setAttribute('aria-pressed', String(c.dataset.d === wDevice));
       c.disabled = !!whisperLoading || (c.dataset.d === 'gpu' && !navigator.gpu);
     });
+
+    // 스레드에서 GPU 가 되는지 아직 모르면 확인 후 다시 그린다
+    if (navigator.gpu && workerGpu === null) {
+      probeWorkerGpu().then(function () { syncModelBox(); });
+    }
     $('wDeviceNote').textContent = !navigator.gpu
       ? '이 기기는 GPU 가속을 지원하지 않아 CPU 로만 처리합니다.'
       : wDevice === 'gpu'
-        ? 'GPU 로 처리합니다. 훨씬 빠르지만 일부 기기에서 결과가 깨질 수 있습니다.'
+        ? ('GPU 로 처리합니다. 훨씬 빠릅니다.'
+            + (gpuNeedsMainThread() ? ' 다만 이 브라우저는 GPU 처리 중 화면이 잠시 멈춥니다.' : ''))
         : wDevice === 'cpu'
-          ? 'CPU 로 처리합니다. 느리지만 결과가 안정적이고 내려받는 용량도 절반입니다.'
+          ? 'CPU 로 처리합니다. 느리지만 화면이 멈추지 않고 내려받는 용량도 절반입니다.'
           : (forceCpu
               ? '자동 — 이 기기는 GPU 결과가 깨진 적이 있어 CPU 를 씁니다. 다시 시도하려면 「GPU」를 고르세요.'
-              : '자동 — GPU 로 빠르게 처리하고, 결과가 깨지면 CPU 로 바꿉니다. (권장)');
+              : gpuNeedsMainThread()
+                ? '자동 — 이 브라우저는 GPU 를 쓰면 화면이 멈춰서, 끊김 없는 CPU 를 씁니다. 속도를 원하면 「GPU」를 고르세요.'
+                : '자동 — GPU 로 빠르게 처리하고, 결과가 깨지면 CPU 로 바꿉니다. (권장)');
 
     if (whisperReady()) {
       v.className = 'modelbox__v is-ready';
@@ -5119,12 +5127,31 @@ input, textarea{ font:inherit; }
   var wDevice = load(K.wdevice, 'auto');
   if (['auto', 'gpu', 'cpu'].indexOf(wDevice) === -1) wDevice = 'auto';
 
+  /* 화면 스레드에 GPU 가 있어도 백그라운드 스레드에서는 못 쓰는 브라우저가 있다.
+     실제로 물어봐서 확인한다. null = 아직 확인 전. */
+  var workerGpu = null;
+
+  function probeWorkerGpu() {
+    if (workerGpu !== null) return Promise.resolve(workerGpu);
+    if (!navigator.gpu || !workerAvailable()) { workerGpu = false; return Promise.resolve(false); }
+    return wkSend({ type: 'probe' })
+      .then(function (d) { workerGpu = !!d.gpu; return workerGpu; })
+      .catch(function () { workerGpu = false; return false; });
+  }
+
   /** 이번에 실제로 GPU 를 쓸지. */
   function willUseGpu() {
     if (!navigator.gpu) return false;
     if (wDevice === 'cpu') return false;
     if (wDevice === 'gpu') return true;
-    return !forceCpu;                                // auto
+    // 자동: GPU 를 쓰면 화면이 멈추는 기기에서는 끊김 없는 쪽을 고른다
+    if (workerGpu === false) return false;
+    return !forceCpu;
+  }
+
+  /** GPU 를 쓰려면 화면이 멈추는 것을 감수해야 하는 기기인지 */
+  function gpuNeedsMainThread() {
+    return !!navigator.gpu && workerGpu === false;
   }
 
   /* 어떤 모델을 이미 내려받아 뒀는지.
@@ -5149,7 +5176,11 @@ input, textarea{ font:inherit; }
     'self.onmessage = async (e) => {',
     '  const d = e.data;',
     '  try {',
-    '    if (d.type === "load") {',
+    '    if (d.type === "probe") {',
+    '      let ok = false;',
+    '      try { ok = !!(self.navigator && self.navigator.gpu && await self.navigator.gpu.requestAdapter()); } catch (x) {}',
+    '      self.postMessage({ type: "probed", id: d.id, gpu: ok });',
+    '    } else if (d.type === "load") {',
     '      const mod = await import(d.lib);',
     '      mod.env.allowLocalModels = false;',
     '      pipe = await mod.pipeline("automatic-speech-recognition", d.model, {',
@@ -5235,8 +5266,10 @@ input, textarea{ font:inherit; }
         whisperEta = 0;
       }
     }, 500);
-    // 별도 스레드를 쓸 수 있으면 라이브러리도 그쪽에서 불러온다
-    var useWorker = workerAvailable();
+    // GPU 를 쓰기로 했는데 스레드에서 GPU 가 안 되면, 그때만 화면 스레드에서 돌린다.
+    // (그 경우 처리 중 화면이 멈춘다 — 사용자가 GPU 를 고를 때 안내한다)
+    var wantGpu = willUseGpu();
+    var useWorker = workerAvailable() && !(wantGpu && workerGpu === false);
     var libP = useWorker ? Promise.resolve(null)
                          : import(/* webpackIgnore: true */ WHISPER_LIB);
 
