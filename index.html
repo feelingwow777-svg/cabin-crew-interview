@@ -1377,15 +1377,10 @@ input, textarea{ font:inherit; }
     </button>
 
     <div class="exsrc" id="anModeBox">
-      <span class="exrow__label">답변 분석 방식</span>
-      <div class="chips" id="anMode">
-        <button class="chip" data-mode="both">녹음 + 받아쓰기</button>
-        <button class="chip" data-mode="stt">받아쓰기만</button>
-        <button class="chip" data-mode="precise">녹음 + 정밀 분석</button>
-      </div>
+      <span class="exrow__label">답변 분석</span>
       <p class="prefs__note" id="anModeNote"></p>
 
-      <div class="modelbox" id="modelBox" hidden>
+      <div class="modelbox" id="modelBox">
         <div class="modelbox__top">
           <span class="modelbox__k">음성인식 모델</span>
           <span class="modelbox__v" id="modelState">확인 중…</span>
@@ -1619,16 +1614,6 @@ input, textarea{ font:inherit; }
           <button class="chip" data-scope="official">기출만</button>
           <button class="chip" data-scope="fail">못했던 것</button>
         </div>
-      </div>
-
-      <div class="exsrc">
-        <span class="exrow__label">분석 방식</span>
-        <div class="chips" id="exMode">
-          <button class="chip" data-mode="both" aria-pressed="true">녹음 + 받아쓰기</button>
-          <button class="chip" data-mode="stt">받아쓰기만</button>
-          <button class="chip" data-mode="precise">녹음 + 정밀 분석</button>
-        </div>
-        <p class="prefs__note" id="exModeNote"></p>
       </div>
 
       <div class="micnote" id="exMicNote"></div>
@@ -2421,9 +2406,10 @@ input, textarea{ font:inherit; }
   // 그래서 1번에서 체크한 질문은 3·4번에서 만나도 같은 상태로 보인다.
   var status   = load(K.status, null);      // { 질문: 'done' | 'fail' }
   var onlyTodo = load(K.onlyTodo, false);   // 아직 답변 안 한 것만 뽑기
-  // 'both' = 녹음과 받아쓰기 동시, 'stt' = 받아쓰기만 (마이크를 공유하지 못하는 기기용)
-  var anMode  = load(K.anmode, 'both');
-  if (anMode !== 'stt') anMode = 'both';
+  /* 분석은 한 흐름으로만 돈다:
+       녹음 → 파일 저장 → 기기 안에서 받아쓰기 → 내용·목소리 분석
+     실시간 받아쓰기는 녹음과 마이크를 두고 다투므로 쓰지 않는다. */
+  var anMode = 'precise';
   var exams    = load(K.exams, []);         // 실전평가 결과 이력
 
   // v1(단순 완료 배열) → v2(상태 객체) 1회 이관
@@ -2704,17 +2690,12 @@ input, textarea{ font:inherit; }
     if (!timerId) $('timerLabel').textContent = fmtClock(sec);
   }
 
-  /* ---------- 분석 방식 (앱 전체 공통) ---------- */
+  /* ---------- 분석 안내 ---------- */
   function syncAnMode() {
-    document.querySelectorAll('#anMode .chip').forEach(function (c) {
-      c.setAttribute('aria-pressed', String(c.dataset.mode === anMode));
-    });
-    $('anModeNote').innerHTML = anMode === 'stt'
-      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석이 확실히 되는 대신, <b>녹음 파일과 목소리 분석은 남지 않습니다.</b>'
-      : anMode === 'precise'
-      ? '<b>녹음과 답변 내용 분석을 모두</b> 얻습니다. 녹음을 마친 뒤 기기 안에서 처리하므로 충돌이 없습니다. ' +
-        '처음 한 번 <b>약 40MB</b>를 내려받고(Wi-Fi 권장), 분석에 답변 길이의 <b>2~4배</b> 시간이 걸립니다.'
-      : '녹음하면서 동시에 받아씁니다. 기기에 따라 둘이 충돌해 받아쓰기가 비어 나오면 <b>「녹음 + 정밀 분석」</b>으로 바꾸세요.';
+    $('anModeNote').innerHTML =
+      '답변을 녹음하면 <b>녹음 파일 · 받아쓴 내용 · 목소리 분석</b>이 한 번에 나옵니다. ' +
+      '받아쓰기는 기기 안에서 처리되어 밖으로 나가지 않습니다. ' +
+      '이를 위해 <b>처음 한 번 약 40MB</b>를 내려받습니다 (Wi-Fi 권장).';
     syncModelBox();
     if (!$('sheetAnswer')) return;
     syncRecBtn(!!(rec && rec.isActive()));
@@ -2725,7 +2706,6 @@ input, textarea{ font:inherit; }
 
   function syncModelBox() {
     var box = $('modelBox');
-    box.hidden = (anMode !== 'precise');
     if (box.hidden) return;
 
     var v = $('modelState'), track = $('modelTrack'), bar = $('modelBar');
@@ -2759,21 +2739,6 @@ input, textarea{ font:inherit; }
     }
   }
 
-  function setAnMode(m) {
-    anMode = (m === 'stt' || m === 'precise') ? m : 'both';
-    save(K.anmode, anMode);
-    exam.mode = anMode;          // 실전평가 기본값도 함께 맞춘다
-    syncAnMode();
-    if (!$('exam').hidden) syncExamSetup();
-    buzz(8);
-
-    if (anMode === 'precise' && !whisperReady() && !whisperLoading) {
-      toast('아래 「지금 내려받기」를 먼저 눌러 주세요');
-      setTimeout(function () {
-        $('modelBox').scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
-      }, 120);
-    }
-  }
 
   /* ---------- 답변 시간 다이얼 ---------- */
   var SEC_MIN = 5, SEC_MAX = 900;
@@ -3652,7 +3617,7 @@ input, textarea{ font:inherit; }
 
   function syncRecBtn(on) {
     $('btnRec').setAttribute('aria-pressed', String(on));
-    $('recLabel').textContent = on ? '정지' : (anMode === 'stt' ? '받아쓰기' : '녹음');
+    $('recLabel').textContent = on ? '정지' : '녹음';
   }
 
   function startRec() {
@@ -3662,37 +3627,13 @@ input, textarea{ font:inherit; }
     // 어떤 질문에 대한 답변인지 붙잡아 둔다 (녹음 중 화면이 바뀔 수 있다)
     recItem = current;
     recStt = null;
-
-    var attachStt = function () {
-      if (!canTranscribe || !recItem) return;
-      var t = createTranscriber(recItem.t === '영어' ? 'en-US' : 'ko-KR');
-      if (t.start()) recStt = t;
-    };
-
-    // 받아쓰기만 모드 — 녹음하지 않아 인식이 마이크를 독점한다
-    if (anMode === 'stt') {
-      if (!canTranscribe) { toast('이 브라우저는 받아쓰기를 지원하지 않아요'); return; }
-      recOnlyStt = true;
-      attachStt();
-      if (!recStt) { toast('받아쓰기를 시작하지 못했어요'); return; }
-      syncRecBtn(true);
-      buzz(20);
-      toast('받아쓰는 중 — 다시 누르면 분석해 드려요');
-      return;
-    }
-
     recOnlyStt = false;
+
     rec = createRecorder();
     rec.start().then(function () {
       syncRecBtn(true);
       buzz(20);
-      toast(anMode === 'precise' ? '녹음 중 — 정지하면 기기에서 분석합니다'
-          : canTranscribe ? '녹음 중 — 다시 누르면 분석해 드려요'
-          : '녹음 중 — 다시 누르면 저장됩니다');
-
-      // 정밀 모드는 녹음이 끝난 뒤 파일을 처리하므로 실시간 인식을 붙이지 않는다.
-      // 그 외에는 녹음이 자리를 잡은 뒤에 붙인다 (반대 순서면 소리를 못 받는다).
-      if (anMode !== 'precise') setTimeout(function () { if (rec) attachStt(); }, 400);
+      toast('녹음 중 — 정지하면 바로 분석합니다');
     }).catch(function (e) {
       if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
@@ -3712,26 +3653,11 @@ input, textarea{ font:inherit; }
     var item = recItem || current;
     var q = item ? item.q : '', tag = item ? item.t : '';
 
-    var sttDiag = recStt ? recStt.diag() : null;
-    var sttP = recStt ? recStt.stop() : Promise.resolve('');
-    recStt = null;
-
-    // 받아쓰기만 모드 — 저장할 오디오가 없으니 바로 분석 결과를 보여 준다
-    if (recOnlyStt) {
-      recOnlyStt = false;
-      syncRecBtn(false);
-      sttP.then(function (transcript) {
-        buzz(14);
-        showAnswerReport(item, transcript || '', null, 0, sttDiag);
-      });
-      return;
-    }
-
     var r = rec; rec = null;
     syncRecBtn(false);
 
-    Promise.all([r.stop(), sttP]).then(function (arr) {
-      var res = arr[0], transcript = arr[1] || '';
+    r.stop().then(function (res) {
+      var transcript = '';
       if (!res.blob || res.blob.size < 800) { toast('녹음이 너무 짧아요'); return; }
 
       var meta = {
@@ -3744,20 +3670,21 @@ input, textarea{ font:inherit; }
       return recAdd(meta, res.blob).then(function () {
         refreshRecCount();
         buzz(14);
-        showAnswerReport(item, transcript, res.metrics, res.durationMs, sttDiag);
+        showAnswerReport(item, transcript, res.metrics, res.durationMs, null);
 
-        // 정밀 모드 — 녹음이 끝난 지금 파일을 분석해 결과를 채워 넣는다
-        if (anMode === 'precise') {
-          setAnsPending(true, '모델 준비 중…');
-          enqueueTranscribe(res.blob, item && item.t === '영어' ? 'en' : 'ko', function (text, err) {
-            setAnsPending(false);
-            if (err) { $('ansScript').className = 'ansscript is-empty';
-                       $('ansScript').textContent = '정밀 분석에 실패했습니다 (' + err + ')'; return; }
-            meta.transcript = text;
-            recAdd(meta, res.blob).catch(function () {});   // 받아쓴 내용을 녹음함에도 남긴다
-            showAnswerReport(item, text, res.metrics, res.durationMs, null);
-          });
-        }
+        // 녹음이 끝난 지금 그 파일을 받아써서 내용 분석까지 채워 넣는다
+        setAnsPending(true, '모델 준비 중…');
+        enqueueTranscribe(res.blob, item && item.t === '영어' ? 'en' : 'ko', function (text, err) {
+          setAnsPending(false);
+          if (err) {
+            $('ansScript').className = 'ansscript is-empty';
+            $('ansScript').textContent = '받아쓰기에 실패했습니다 (' + err + '). 녹음과 목소리 분석은 그대로 남아 있습니다.';
+            return;
+          }
+          meta.transcript = text;
+          recAdd(meta, res.blob).catch(function () {});   // 받아쓴 내용을 녹음함에도 남긴다
+          showAnswerReport(item, text, res.metrics, res.durationMs, null);
+        });
       });
     }).catch(function () { toast('녹음을 저장하지 못했어요'); });
   }
@@ -3816,11 +3743,9 @@ input, textarea{ font:inherit; }
       '분석할 만큼의 답변이 인식되지 않았습니다.');
 
     paint($('ansVoice'), metrics ? feedbackOf(metrics, axesOf(metrics), durMs / 1000) : [],
-      anMode === 'stt'
-        ? '「받아쓰기만」 모드에서는 녹음을 하지 않아 목소리를 분석하지 않습니다. 톤·강세까지 보시려면 설정에서 「녹음 + 받아쓰기」로 바꾸세요.'
-        : '목소리를 분석할 만큼 길게 말하지 않았습니다.');
+      '목소리를 분석할 만큼 길게 말하지 않았습니다.');
 
-    $('ansToRecs').hidden = (anMode === 'stt');
+    $('ansToRecs').hidden = false;
     openSheet('sheetAnswer');
   }
 
@@ -4076,26 +4001,16 @@ input, textarea{ font:inherit; }
     document.querySelectorAll('#exScope .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(c.dataset.scope === exam.scope));
     });
-    document.querySelectorAll('#exMode .chip').forEach(function (c) {
-      c.setAttribute('aria-pressed', String(c.dataset.mode === exam.mode));
-    });
-    $('exModeNote').textContent = exam.mode === 'stt'
-      ? '녹음을 하지 않아 음성인식이 마이크를 독점합니다. 답변 내용 분석은 확실하지만, 녹음 파일과 목소리 분석은 남지 않습니다.'
-      : exam.mode === 'precise'
-      ? '녹음과 답변 내용 분석을 모두 얻습니다. 다음 문항에 답하는 동안 뒤에서 분석하므로 기다림이 거의 없습니다. 처음 한 번 약 40MB를 내려받습니다.'
-      : '녹음하면서 동시에 받아씁니다. 기기에 따라 충돌해 받아쓰기가 비어 나오면 「녹음 + 정밀 분석」으로 바꾸세요.';
     $('exTotal').textContent = examTotalLabel();
 
     var note = $('exMicNote');
     if (canRecord) {
       note.className = 'micnote micnote--ok';
       note.innerHTML = '시작을 누르면 <strong>마이크 권한</strong>을 한 번 요청합니다. ' +
-        '팝업에서 <strong>“이번만 허용”이 아니라 “허용”(항상)</strong>을 고르면 다시 묻지 않습니다. 허용하면 답변을 녹음하고, ' +
-        (canTranscribe
-          ? '<strong>말한 내용까지 받아써서</strong> 질문에 맞게 답했는지 분석해 드립니다. '
-          : '목소리만 분석합니다(이 브라우저는 받아쓰기 미지원). ') +
-        '녹음 파일은 이 기기 안에만 저장됩니다.' +
-        (canTranscribe ? '<br><span style="color:var(--fog-2)">받아쓰기는 브라우저 기본 음성인식을 쓰며, 그 과정에서 음성이 브라우저 제조사 서버로 전송될 수 있습니다.</span>' : '');
+        '팝업에서 <strong>“이번만 허용”이 아니라 “허용”(항상)</strong>을 고르면 다시 묻지 않습니다.<br>' +
+        '답변은 <strong>녹음 + 받아쓰기 + 목소리 분석</strong>이 한 번에 처리됩니다. ' +
+        '다음 문항에 답하는 동안 앞 문항을 뒤에서 받아쓰므로 기다림이 거의 없습니다. ' +
+        '<span style="color:var(--fog-2)">모든 처리는 이 기기 안에서 이뤄지며 음성이 밖으로 나가지 않습니다.</span>';
     } else if (frameBlocksMic) {
       note.className = 'micnote micnote--no';
       note.innerHTML = '이 화면은 마이크를 쓸 수 없는 형태로 실행 중이라 <strong>목소리 분석 없이 시간 관리 연습</strong>으로 진행됩니다. ' +
@@ -4155,7 +4070,7 @@ input, textarea{ font:inherit; }
     showPane('exRun');
 
     // 마이크를 미리 한 번만 확보한다. 실패해도 시간 연습으로 진행한다.
-    if (canRecord && exam.mode !== 'stt') {
+    if (canRecord) {
       acquireMic().then(function () { nextExamQuestion(); })
         .catch(function (e) {
           if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) openMicSheet();
@@ -4181,21 +4096,7 @@ input, textarea{ font:inherit; }
     exam.stt = null;
     exam.rec = null;
 
-    // 받아쓰기는 녹음이 자리를 잡은 뒤에 붙인다.
-    // 반대 순서로 하면 녹음이 마이크를 가져가면서 인식이 소리를 못 받는다.
-    var startStt = function () {
-      if (!canTranscribe) return;
-      var t = createTranscriber(item.t === '영어' ? 'en-US' : 'ko-KR');
-      if (t.start(function (live) { $('exMeterCap').textContent = live ? '인식 중' : '녹음 중'; })) exam.stt = t;
-    };
-
-    if (exam.mode === 'stt') {
-      // 받아쓰기 우선 — 녹음을 하지 않아 인식이 마이크를 독점한다
-      $('exMeter').hidden = false;
-      $('exMeterCap').textContent = '받아쓰는 중';
-      $('exLevel').style.width = '100%';
-      startStt();
-    } else if (canRecord) {
+    if (canRecord) {
       // 평가 시작 때 확보한 스트림을 문항마다 재사용한다 → 권한을 한 번만 묻는다
       exam.rec = createRecorder(sharedStream);
       exam.rec.start(function (rms) {
@@ -4203,8 +4104,6 @@ input, textarea{ font:inherit; }
       }).then(function () {
         $('exMeter').hidden = false;
         $('exMeterCap').textContent = '녹음 중';
-        // 정밀 모드는 끝난 뒤 파일을 처리하므로 실시간 인식을 붙이지 않는다
-        if (exam.mode !== 'precise') setTimeout(startStt, 400);
       }).catch(function (e) {
         exam.rec = null;
         $('exMeter').hidden = true;
@@ -4266,22 +4165,20 @@ input, textarea{ font:inherit; }
         };
         recAdd(meta, blobInfo.blob).then(refreshRecCount).catch(function () {});
 
-        // 정밀 모드 — 다음 문항에 답하는 동안 뒤에서 분석해 둔다.
+        // 다음 문항에 답하는 동안 뒤에서 받아쓴다.
         // 그래서 결과 화면에 도착할 즈음이면 대부분 끝나 있다.
-        if (exam.mode === 'precise') {
-          var slot = exam.results[exam.results.length - 1];
-          slot.pending = true;
-          enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
-            slot.pending = false;
-            slot.sttErr = err || '';
-            if (text) {
-              slot.content = analyzeContent(text, item);
-              meta.transcript = text;
-              recAdd(meta, blobInfo.blob).catch(function () {});
-            }
-            if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
-          });
-        }
+        var slot = exam.results[exam.results.length - 1];
+        slot.pending = true;
+        enqueueTranscribe(blobInfo.blob, item.t === '영어' ? 'en' : 'ko', function (text, err) {
+          slot.pending = false;
+          slot.sttErr = err || '';
+          if (text) {
+            slot.content = analyzeContent(text, item);
+            meta.transcript = text;
+            recAdd(meta, blobInfo.blob).catch(function () {});
+          }
+          if (!$('exReport').hidden) renderExamContent();   // 결과 화면이 열려 있으면 갱신
+        });
       }
       exam.idx++;
       finishing = false;
@@ -4346,18 +4243,6 @@ input, textarea{ font:inherit; }
         : sttReason(lastDiag);
       cul.appendChild(li0);
 
-      // 녹음과 함께 돌리다 실패한 경우, 해결책을 제시한다
-      if (exam.mode === 'both' && canTranscribe) {
-        var li1 = document.createElement('li');
-        li1.className = 'is-bad';
-        li1.innerHTML = '<span class="fb__t"></span><span class="fb__d"></span>';
-        li1.querySelector('.fb__t').textContent = '해결 방법 — 「녹음 + 정밀 분석」으로 바꾸세요';
-        li1.querySelector('.fb__d').textContent =
-          '이 기기는 녹음과 실시간 음성인식을 동시에 쓰지 못합니다. ' +
-          '설정에서 「녹음 + 정밀 분석」을 고르면 녹음을 마친 뒤 기기 안에서 분석하므로 ' +
-          '녹음 파일과 답변 내용 분석을 모두 얻을 수 있습니다.';
-        cul.appendChild(li1);
-      }
       return;
     }
 
@@ -5320,15 +5205,6 @@ input, textarea{ font:inherit; }
   $('exScope').addEventListener('click', function (e) {
     var c = e.target.closest('.chip'); if (!c) return;
     exam.scope = c.dataset.scope; syncExamSetup(); buzz(8);
-  });
-  // 실전평가와 하단 설정은 같은 값을 공유한다
-  $('exMode').addEventListener('click', function (e) {
-    var c = e.target.closest('.chip'); if (!c) return;
-    setAnMode(c.dataset.mode);
-  });
-  $('anMode').addEventListener('click', function (e) {
-    var c = e.target.closest('.chip'); if (!c) return;
-    setAnMode(c.dataset.mode);
   });
 
   $('btnGetModel').addEventListener('click', function () {
