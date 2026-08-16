@@ -2778,6 +2778,11 @@ input, textarea{ font:inherit; }
     if (navigator.gpu && workerGpu === null) {
       probeWorkerGpu().then(function () { syncModelBox(); });
     }
+    if (gpuFellBack && whisperDevice === 'CPU') {
+      $('wDeviceNote').textContent = 'GPU 로 시작하지 못해 CPU 용(용량 절반)으로 받았습니다. '
+        + '이 기기에서는 GPU 를 쓸 수 없습니다 — ' + gpuFellBack;
+      return;
+    }
     $('wDeviceNote').textContent = !navigator.gpu
       ? '이 기기는 GPU 가속을 지원하지 않아 CPU 로만 처리합니다.'
       : wDevice === 'gpu'
@@ -4692,6 +4697,10 @@ input, textarea{ font:inherit; }
     row(env, '마이크 녹음', canRecord ? '가능' : (frameBlocksMic ? '차단 (구조적)' : '불가'));
     row(env, '답변 받아쓰기', canTranscribe ? '가능' : '미지원');
     row(env, '정밀 분석 모델', whisperReady() ? '준비됨' : (whisperLoading ? '받는 중' : '미설치'));
+    row(env, '처리 방식', (whisperDevice || '미정') + ' · 설정 ' + wDevice);
+    row(env, 'GPU (화면/스레드)', (navigator.gpu ? '가능' : '불가') + ' / ' +
+        (workerGpu === null ? '확인 전' : (workerGpu ? '가능' : '불가')));
+    if (gpuFellBack) row(env, 'GPU 실패 사유', gpuFellBack);
     row(env, '앱 버전', document.lastModified || '알 수 없음');
     row(env, '저장 기능', (function () { try { localStorage.setItem('_a', '1'); localStorage.removeItem('_a'); return '정상'; } catch (e) { return '차단됨'; } })());
     // data: URL 처럼 경로가 문서 전체인 경우가 있어 잘라서 보여 준다
@@ -5130,6 +5139,7 @@ input, textarea{ font:inherit; }
   /* 화면 스레드에 GPU 가 있어도 백그라운드 스레드에서는 못 쓰는 브라우저가 있다.
      실제로 물어봐서 확인한다. null = 아직 확인 전. */
   var workerGpu = null;
+  var gpuFellBack = '';    // GPU 로 시작하려다 CPU 로 내려간 사유
 
   function probeWorkerGpu() {
     if (workerGpu !== null) return Promise.resolve(workerGpu);
@@ -5249,6 +5259,7 @@ input, textarea{ font:inherit; }
     if (whisperLoading) return whisperLoading;
 
     whisperFiles = {};
+    gpuFellBack = '';
     whisperBytes = null; whisperSpeed = 0; whisperEta = 0;
     whisperInit = 0; whisperDone = 0;
     whisperStartAt = Date.now();
@@ -5266,14 +5277,16 @@ input, textarea{ font:inherit; }
         whisperEta = 0;
       }
     }, 500);
-    // GPU 를 쓰기로 했는데 스레드에서 GPU 가 안 되면, 그때만 화면 스레드에서 돌린다.
-    // (그 경우 처리 중 화면이 멈춘다 — 사용자가 GPU 를 고를 때 안내한다)
-    var wantGpu = willUseGpu();
-    var useWorker = workerAvailable() && !(wantGpu && workerGpu === false);
-    var libP = useWorker ? Promise.resolve(null)
-                         : import(/* webpackIgnore: true */ WHISPER_LIB);
+    // 스레드에서 GPU 가 되는지 '먼저 확인하고' 시작한다.
+    // 확인 전에 시작하면 GPU 를 골랐어도 스레드가 실패해 CPU 로 새어 나간다.
+    var useWorker, wantGpu;
 
-    whisperLoading = libP.then(function (mod) {
+    whisperLoading = probeWorkerGpu().then(function () {
+      wantGpu = willUseGpu();
+      // GPU 를 쓰기로 했는데 스레드에서 GPU 가 안 되면, 그때만 화면 스레드에서 돌린다.
+      useWorker = workerAvailable() && !(wantGpu && workerGpu === false);
+      return useWorker ? null : import(/* webpackIgnore: true */ WHISPER_LIB);
+    }).then(function (mod) {
       if (mod) mod.env.allowLocalModels = false;
 
       var onProg = function (p) {
@@ -5356,7 +5369,10 @@ input, textarea{ font:inherit; }
       // 사용자가 고른 방식(또는 자동 판정)에 따라 시작 지점을 정한다
       if (!willUseGpu()) return withTimeout(build(false), LIMIT, 'CPU');
 
-      return withTimeout(build(true), LIMIT, 'GPU').catch(function () {
+      return withTimeout(build(true), LIMIT, 'GPU').catch(function (e) {
+        // GPU 로 시작하지 못했다. 조용히 CPU 로 바꾸면 사용자는
+        // 'GPU 를 골랐는데 왜 CPU 용량을 받지?' 하고 혼란스러워진다.
+        gpuFellBack = String((e && e.message) || e).slice(0, 80) || 'GPU 초기화 실패';
         if (useWorker) resetWorker();      // 반쯤 올라간 스레드를 버리고 새로 시작
         whisperFiles = {}; whisperInit = 0; whisperDone = 0;
         whisperBytes = null; whisperEta = 0;
@@ -5798,7 +5814,9 @@ input, textarea{ font:inherit; }
       clearInterval(tick);
       syncModelBox();
       buzz(20);
-      toast('음성인식 모델 준비 완료 · 이제 바로 쓸 수 있어요');
+      toast(gpuFellBack && whisperDevice === 'CPU'
+        ? 'GPU 를 쓸 수 없어 CPU 용으로 받았어요'
+        : '음성인식 모델 준비 완료 · ' + whisperDevice + ' 사용');
     }).catch(function (e) {
       clearInterval(tick);
       modelErr = String(e && e.message || e).slice(0, 140);
