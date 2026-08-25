@@ -1140,6 +1140,46 @@ input, textarea{ font:inherit; }
   background:color-mix(in srgb, var(--red) 7%, var(--ink-2));
 }
 .qlist li.is-done .qtxt{ color:var(--fog); }
+/* 내 질문 관리 — 목록 보기와 수정 */
+.sheetcount{
+  font-family:var(--t-mono); font-size:12.5px; font-weight:600;
+  color:var(--fog-2); margin-left:6px;
+}
+.qlist--manage li{ flex-direction:column; align-items:stretch; gap:10px; }
+.qlist--manage .qrow{ display:flex; align-items:flex-start; gap:10px; }
+.qlist--manage .qacts{
+  display:flex; align-items:center; justify-content:flex-end; gap:10px;
+  padding-top:2px; border-top:1px solid var(--line);
+}
+.qline{ display:block; }
+.qtoggle{
+  display:inline-block; margin-top:8px; padding:0;
+  font-size:11.5px; color:var(--fog-2);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.qtoggle:active{ color:var(--paper); }
+
+.qedit{ display:flex; flex-direction:column; gap:10px; }
+.qedit__ta{
+  width:100%; min-height:88px; resize:vertical;
+  padding:12px 13px; border-radius:var(--r-md);
+  border:1px solid var(--green); background:var(--ink);
+  color:var(--paper); font-size:14.5px; line-height:1.6;
+}
+.qedit__ta:focus{ outline:none; }
+.qedit__row{ display:flex; gap:8px; justify-content:flex-end; }
+.qbtn{
+  min-height:40px; padding:0 18px; border-radius:11px;
+  border:1px solid var(--line-2); background:rgba(255,255,255,.04);
+  font-size:13.5px; font-weight:700; color:var(--paper);
+}
+.qbtn--go{ background:var(--green); border-color:var(--green); color:#07130D; }
+.qbtn:active{ transform:scale(.97); }
+.qlist li.is-editing{
+  border-color:color-mix(in srgb, var(--green) 45%, transparent);
+  background:color-mix(in srgb, var(--green) 7%, var(--ink-2));
+}
+
 .qlist .qmeta{
   display:block; margin-top:5px;
   font-family:var(--t-mono); font-size:10px; letter-spacing:.1em;
@@ -1290,8 +1330,8 @@ input, textarea{ font:inherit; }
           질문 뽑기
         </button>
         <button class="btn btn--ghost" id="btnManage">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          추가
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+          <span id="btnManageLabel">목록</span>
         </button>
       </div>
     </section>
@@ -1381,6 +1421,11 @@ input, textarea{ font:inherit; }
       </span>
       <button class="switch" id="swUnanswered" aria-pressed="false" aria-label="아직 답변 안 한 질문만 뽑기"></button>
     </div>
+
+    <button class="linkrow" id="btnMyQ">
+      내가 추가한 질문
+      <span class="muted" id="myQHint">0개</span>
+    </button>
 
     <button class="linkrow" id="btnStats">
       통계 보기
@@ -1551,13 +1596,13 @@ input, textarea{ font:inherit; }
   <div class="sheet__panel" style="--sig:var(--green)">
     <div class="sheet__grip"></div>
     <div class="sheet__head">
-      <h2>내 질문 관리</h2>
+      <h2>내 질문 <span class="sheetcount" id="customCount"></span></h2>
       <button class="iconbtn" data-close="sheetCustom" aria-label="닫기">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
     <div class="sheet__body">
-      <ul class="qlist" id="customList"></ul>
+      <ul class="qlist qlist--manage" id="customList"></ul>
       <div class="empty" id="customEmpty" hidden>
         <strong>아직 추가한 질문이 없어요</strong>
         지망 학교 기출, 스터디에서 나온 질문,<br>대비가 약한 주제를 넣어 두세요.
@@ -2723,6 +2768,8 @@ input, textarea{ font:inherit; }
     $('statHint').textContent = (whole.total ? Math.round(whole.done / whole.total * 100) : 0) + '%';
 
     $('btnDrawCustom').disabled = custom.length === 0;
+    $('myQHint').textContent = custom.length + '개';
+    $('btnManageLabel').textContent = custom.length ? '목록 ' + custom.length : '추가';
     $('swUnanswered').setAttribute('aria-pressed', String(onlyTodo));
 
     document.querySelectorAll('#chipsTime .chip').forEach(function (c) {
@@ -3203,53 +3250,157 @@ input, textarea{ font:inherit; }
     return b;
   }
 
+  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 6.5l3 3"/></svg>';
+  var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>';
+
   function renderCustomList() {
     var ul = $('customList');
     ul.innerHTML = '';
     $('customEmpty').hidden = custom.length > 0;
+    $('customCount').textContent = custom.length ? custom.length + '개' : '';
 
-    custom.forEach(function (item, idx) {
-      var li = document.createElement('li');
+    custom.forEach(function (item, idx) { ul.appendChild(buildCustomRow(item, idx)); });
+  }
 
-      var num = document.createElement('span');
-      num.className = 'qnum';
-      num.textContent = String(idx + 1).padStart(2, '0');
+  /** 목록 한 줄 (보기 상태) */
+  function buildCustomRow(item, idx) {
+    var li = document.createElement('li');
 
-      var txt = document.createElement('span');
-      txt.className = 'qtxt';
-      txt.textContent = item.q;
+    var row = document.createElement('div');
+    row.className = 'qrow';
 
-      // 자동 판별한 유형과 가이드를 그 자리에서 보여 준다
-      var d = deriveRubric(item.q);
-      var meta = document.createElement('span');
-      meta.className = 'qmeta';
-      meta.textContent = d.typeName + ' 유형' + (d.k.length ? ' · 핵심어 ' + d.k.slice(0, 3).join(', ') : '');
-      txt.appendChild(meta);
+    var num = document.createElement('span');
+    num.className = 'qnum';
+    num.textContent = String(idx + 1).padStart(2, '0');
 
-      var guide = document.createElement('span');
-      guide.className = 'qguide';
-      guide.textContent = d.g;
-      txt.appendChild(guide);
+    var txt = document.createElement('span');
+    txt.className = 'qtxt';
 
-      var chk = attachCheck(li, item.q);
+    var qline = document.createElement('span');
+    qline.className = 'qline';
+    qline.textContent = item.q;
+    txt.appendChild(qline);
 
-      var del = document.createElement('button');
-      del.className = 'qdel';
-      del.setAttribute('aria-label', '삭제');
-      del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>';
-      del.addEventListener('click', function () {
-        custom = custom.filter(function (c) { return c.id !== item.id; });
-        save(K.custom, custom);
-        renderCustomList();
-        render();
-        buzz(10);
-        toast('삭제했습니다');
-      });
+    // 자동 판별한 유형은 항상 보여 주고, 가이드는 접어 둔다 (목록이 길어지지 않게)
+    var d = deriveRubric(item.q);
+    var meta = document.createElement('span');
+    meta.className = 'qmeta';
+    meta.textContent = d.typeName + ' 유형' + (d.k.length ? ' · 핵심어 ' + d.k.slice(0, 3).join(', ') : '');
+    txt.appendChild(meta);
 
-      li.appendChild(num); li.appendChild(txt);
-      li.appendChild(chk); li.appendChild(del);
-      ul.appendChild(li);
+    var guide = document.createElement('span');
+    guide.className = 'qguide';
+    guide.hidden = true;
+    guide.textContent = d.g;
+    txt.appendChild(guide);
+
+    var tog = document.createElement('button');
+    tog.className = 'qtoggle';
+    tog.textContent = '답변 가이드 보기';
+    tog.addEventListener('click', function () {
+      guide.hidden = !guide.hidden;
+      tog.textContent = guide.hidden ? '답변 가이드 보기' : '가이드 접기';
     });
+    txt.appendChild(tog);
+
+    row.appendChild(num); row.appendChild(txt);
+
+    var acts = document.createElement('div');
+    acts.className = 'qacts';
+    acts.appendChild(attachCheck(li, item.q));
+
+    var edit = document.createElement('button');
+    edit.className = 'qdel';
+    edit.setAttribute('aria-label', '질문 수정');
+    edit.innerHTML = ICON_EDIT;
+    edit.addEventListener('click', function () { startEditCustom(item, li); });
+    acts.appendChild(edit);
+
+    var del = document.createElement('button');
+    del.className = 'qdel';
+    del.setAttribute('aria-label', '질문 삭제');
+    del.innerHTML = ICON_TRASH;
+    del.addEventListener('click', function () {
+      custom = custom.filter(function (c) { return c.id !== item.id; });
+      save(K.custom, custom);
+      renderCustomList();
+      render();
+      buzz(10);
+      toast('삭제했습니다');
+    });
+    acts.appendChild(del);
+
+    li.appendChild(row); li.appendChild(acts);
+    return li;
+  }
+
+  /** 그 줄을 그대로 수정칸으로 바꾼다 */
+  function startEditCustom(item, li) {
+    var wrap = document.createElement('div');
+    wrap.className = 'qedit';
+
+    var ta = document.createElement('textarea');
+    ta.className = 'qedit__ta';
+    ta.maxLength = 300;
+    ta.value = item.q;
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'qedit__row';
+    var cancel = document.createElement('button');
+    cancel.className = 'qbtn';
+    cancel.textContent = '취소';
+    var ok = document.createElement('button');
+    ok.className = 'qbtn qbtn--go';
+    ok.textContent = '저장';
+    btnRow.appendChild(cancel); btnRow.appendChild(ok);
+
+    wrap.appendChild(ta); wrap.appendChild(btnRow);
+    li.innerHTML = '';
+    li.className = 'is-editing';
+    li.appendChild(wrap);
+
+    ta.focus();
+    try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
+
+    cancel.addEventListener('click', function () { renderCustomList(); });
+
+    ok.addEventListener('click', function () {
+      var text = ta.value.trim().replace(/\s+/g, ' ');
+      if (!text) { toast('질문을 입력해 주세요'); ta.focus(); return; }
+      if (text === item.q) { renderCustomList(); return; }
+      if (custom.some(function (c) { return c.id !== item.id && c.q === text; })) {
+        toast('같은 질문이 이미 있어요'); return;
+      }
+      renameCustomQuestion(item, text);
+      renderCustomList();
+      render();
+      buzz(12);
+      toast('수정했어요 · ' + deriveRubric(text).typeName + ' 유형');
+    });
+
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ok.click(); }
+      if (e.key === 'Escape') { e.preventDefault(); renderCustomList(); }
+    });
+  }
+
+  /**
+   * 질문 문장을 바꾼다.
+   * 답변 표시와 저장함은 '문장'을 키로 쓰기 때문에, 함께 옮기지 않으면
+   * 수정하는 순간 그 질문의 기록이 사라진 것처럼 보인다.
+   */
+  function renameCustomQuestion(item, newQ) {
+    var oldQ = item.q;
+    item.q = newQ;
+    save(K.custom, custom);
+
+    if (status[oldQ]) {
+      status[newQ] = status[oldQ];
+      delete status[oldQ];
+      save(K.status, status);
+    }
+    var fi = favs.indexOf(oldQ);
+    if (fi !== -1) { favs[fi] = newQ; save(K.fav, favs); }
   }
 
   function renderFavList() {
@@ -6032,11 +6183,16 @@ input, textarea{ font:inherit; }
     if (current) copyText(current.q, '질문을 복사했어요');
   });
 
-  $('btnManage').addEventListener('click', function () {
+  function openCustomSheet() {
     renderCustomList();
     openSheet('sheetCustom');
-    setTimeout(function () { $('newQ').focus(); }, 320);
-  });
+    // 목록이 비어 있을 때만 입력칸으로 바로 간다.
+    // 질문이 있으면 키보드가 목록을 가려서 오히려 보기 어렵다.
+    if (!custom.length) setTimeout(function () { $('newQ').focus(); }, 320);
+  }
+
+  $('btnManage').addEventListener('click', openCustomSheet);
+  $('btnMyQ').addEventListener('click', openCustomSheet);
 
   $('btnFav').addEventListener('click', function () {
     renderFavList();
