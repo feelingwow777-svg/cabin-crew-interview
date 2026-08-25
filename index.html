@@ -454,7 +454,15 @@ input, textarea{ font:inherit; }
 .tipcard__body{
   margin:0;
   font-size:13.5px; line-height:1.72; color:var(--paper);
+  white-space:pre-wrap;
 }
+
+/* 내가 적어 둔 답변 — 모범 답안(호박색)과 구분되게 초록 계열로 */
+.tipcard--ans{
+  border-color:color-mix(in srgb, var(--green) 30%, transparent);
+  background:color-mix(in srgb, var(--green) 8%, var(--ink-1));
+}
+.tipcard--ans .tipcard__head{ color:var(--green); }
 
 /* 탑승권 본체 */
 .pass{
@@ -1087,6 +1095,29 @@ input, textarea{ font:inherit; }
 }
 
 .composer{ display:flex; flex-direction:column; gap:9px; }
+.composer__lab{
+  display:block; margin:2px 0 -3px;
+  font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--fog-2);
+}
+.composer__lab em{ font-style:normal; font-weight:600; color:var(--fog-2); opacity:.75; }
+.qans{
+  display:block; margin-top:8px; padding:9px 11px;
+  border-radius:10px;
+  border:1px solid color-mix(in srgb, var(--green) 24%, transparent);
+  background:color-mix(in srgb, var(--green) 7%, transparent);
+  font-size:12.5px; line-height:1.65; color:var(--paper);
+  white-space:pre-wrap;
+}
+.qans b{
+  display:block; margin-bottom:4px;
+  font-size:10.5px; letter-spacing:.05em; color:var(--green);
+}
+.qedit__lab{
+  font-size:11px; font-weight:700; letter-spacing:.05em; color:var(--fog-2);
+  margin-bottom:-4px;
+}
+.qedit__ta--ans{ min-height:96px; border-color:var(--line-2); }
+.qedit__ta--ans:focus{ border-color:var(--green); }
 .composer textarea{
   width:100%; min-height:88px; resize:vertical;
   padding:13px 14px;
@@ -1536,6 +1567,14 @@ input, textarea{ font:inherit; }
       <p id="passQ" aria-live="polite">준비 중…</p>
     </div>
 
+    <div class="tipcard tipcard--ans" id="ansCard" hidden>
+      <div class="tipcard__head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 6.5l3 3"/></svg>
+        내가 적어 둔 답변
+      </div>
+      <p class="tipcard__body" id="ansBody"></p>
+    </div>
+
     <div class="tipcard" id="tipCard" hidden>
       <div class="tipcard__head">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21.5h4"/><path d="M12 2.5a6.5 6.5 0 0 0-3.7 11.8c.5.4.7.9.7 1.5v.2h6v-.2c0-.6.2-1.1.7-1.5A6.5 6.5 0 0 0 12 2.5Z"/></svg>
@@ -1610,7 +1649,10 @@ input, textarea{ font:inherit; }
     </div>
     <div class="sheet__foot">
       <div class="composer">
+        <label class="composer__lab" for="newQ">질문</label>
         <textarea id="newQ" placeholder="예) 우리 학과 졸업 후 진로 계획을 말해보세요." maxlength="300"></textarea>
+        <label class="composer__lab" for="newA">내 답변 <em>· 비워 둬도 됩니다</em></label>
+        <textarea id="newA" placeholder="이 질문에 이렇게 답하겠다 — 적어 두면 답변했다/못했다를 누를 때 바로 보여 줍니다." maxlength="1200"></textarea>
         <button class="btn btn--go" id="btnAdd" style="--sig:var(--green)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           질문 추가
@@ -2639,7 +2681,7 @@ input, textarea{ font:inherit; }
   function customItems() {
     return custom.map(function (c) {
       var d = deriveRubric(c.q);
-      return { q: c.q, t: '내 질문', g: d.g, r: { k: d.k, n: d.n, derived: true }, d: d };
+      return { q: c.q, t: '내 질문', g: d.g, r: { k: d.k, n: d.n, derived: true }, d: d, a: c.a || '' };
     });
   }
   /** 카테고리의 전체 질문 집합 (진척도 계산의 기준) */
@@ -3045,6 +3087,7 @@ input, textarea{ font:inherit; }
     syncFavBtn();
     syncDoneBtn();
     closeTip();          // 새 질문에서는 가이드를 접고 시작한다
+    hideMyAnswer();
     stopTimer();
     openStage();
     drawBarcode();
@@ -3154,6 +3197,18 @@ input, textarea{ font:inherit; }
     $('favLabel').textContent = on ? '저장됨' : '저장';
   }
 
+  /* ---------- 내가 적어 둔 답변 ---------- */
+  function hasMyAnswer() { return !!(current && current.a && current.a.trim()); }
+
+  function showMyAnswer() {
+    if (!hasMyAnswer()) return false;
+    $('ansBody').textContent = current.a;
+    $('ansCard').hidden = false;
+    return true;
+  }
+
+  function hideMyAnswer() { $('ansCard').hidden = true; }
+
   /* ---------- 답변 가이드 ---------- */
   function closeTip() {
     $('tipCard').hidden = true;
@@ -3198,12 +3253,24 @@ input, textarea{ font:inherit; }
 
     if (kind === ST.FAIL) {
       buzz(12);
+      var mine = showMyAnswer();
       openTip();
-      toast('못했음으로 표시 · 모범 답안을 펼쳤어요');
+      toast(mine ? '못했음으로 표시 · 내 답변과 모범 답안을 펼쳤어요'
+                 : '못했음으로 표시 · 모범 답안을 펼쳤어요');
       return;
     }
 
     buzz(16);
+
+    // 적어 둔 답변이 있으면 대조해 볼 수 있게 멈춘다.
+    // 곧바로 넘어가 버리면 방금 펼친 답변을 읽을 틈이 없다.
+    if (showMyAnswer()) {
+      if (rec && rec.isActive()) stopRec();
+      $('ansCard').scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+      toast('답변함 · 적어 둔 답변과 맞춰 보세요');
+      return;
+    }
+
     toast('답변함 · 다음 질문으로 넘어갑니다');
 
     // 녹음 중이었다면 지금 질문의 답변으로 마무리하고 넘어간다
@@ -3285,8 +3352,19 @@ input, textarea{ font:inherit; }
     var d = deriveRubric(item.q);
     var meta = document.createElement('span');
     meta.className = 'qmeta';
-    meta.textContent = d.typeName + ' 유형' + (d.k.length ? ' · 핵심어 ' + d.k.slice(0, 3).join(', ') : '');
+    meta.textContent = d.typeName + ' 유형'
+      + (d.k.length ? ' · 핵심어 ' + d.k.slice(0, 3).join(', ') : '')
+      + (item.a ? ' · 내 답변 있음' : '');
     txt.appendChild(meta);
+
+    var mine = document.createElement('span');
+    mine.className = 'qans';
+    mine.hidden = true;
+    if (item.a) {
+      mine.innerHTML = '<b>내 답변</b>';
+      mine.appendChild(document.createTextNode(item.a));
+      txt.appendChild(mine);
+    }
 
     var guide = document.createElement('span');
     guide.className = 'qguide';
@@ -3296,10 +3374,12 @@ input, textarea{ font:inherit; }
 
     var tog = document.createElement('button');
     tog.className = 'qtoggle';
-    tog.textContent = '답변 가이드 보기';
+    var openLabel = item.a ? '내 답변·가이드 보기' : '답변 가이드 보기';
+    tog.textContent = openLabel;
     tog.addEventListener('click', function () {
       guide.hidden = !guide.hidden;
-      tog.textContent = guide.hidden ? '답변 가이드 보기' : '가이드 접기';
+      if (item.a) mine.hidden = guide.hidden;
+      tog.textContent = guide.hidden ? openLabel : '접기';
     });
     txt.appendChild(tog);
 
@@ -3339,10 +3419,23 @@ input, textarea{ font:inherit; }
     var wrap = document.createElement('div');
     wrap.className = 'qedit';
 
+    var labQ = document.createElement('span');
+    labQ.className = 'qedit__lab';
+    labQ.textContent = '질문';
+
     var ta = document.createElement('textarea');
     ta.className = 'qedit__ta';
     ta.maxLength = 300;
     ta.value = item.q;
+
+    var labA = document.createElement('span');
+    labA.className = 'qedit__lab';
+    labA.textContent = '내 답변 · 비워 둬도 됩니다';
+
+    var aa = document.createElement('textarea');
+    aa.className = 'qedit__ta qedit__ta--ans';
+    aa.maxLength = 1200;
+    aa.value = item.a || '';
 
     var btnRow = document.createElement('div');
     btnRow.className = 'qedit__row';
@@ -3354,7 +3447,9 @@ input, textarea{ font:inherit; }
     ok.textContent = '저장';
     btnRow.appendChild(cancel); btnRow.appendChild(ok);
 
-    wrap.appendChild(ta); wrap.appendChild(btnRow);
+    wrap.appendChild(labQ); wrap.appendChild(ta);
+    wrap.appendChild(labA); wrap.appendChild(aa);
+    wrap.appendChild(btnRow);
     li.innerHTML = '';
     li.className = 'is-editing';
     li.appendChild(wrap);
@@ -3366,21 +3461,28 @@ input, textarea{ font:inherit; }
 
     ok.addEventListener('click', function () {
       var text = ta.value.trim().replace(/\s+/g, ' ');
+      var ans = aa.value.trim();
       if (!text) { toast('질문을 입력해 주세요'); ta.focus(); return; }
-      if (text === item.q) { renderCustomList(); return; }
-      if (custom.some(function (c) { return c.id !== item.id && c.q === text; })) {
+      var qSame = text === item.q;
+      var aSame = ans === (item.a || '');
+      if (qSame && aSame) { renderCustomList(); return; }
+      if (!qSame && custom.some(function (c) { return c.id !== item.id && c.q === text; })) {
         toast('같은 질문이 이미 있어요'); return;
       }
-      renameCustomQuestion(item, text);
+      if (!qSame) renameCustomQuestion(item, text);
+      if (!aSame) { item.a = ans; save(K.custom, custom); }
       renderCustomList();
       render();
       buzz(12);
-      toast('수정했어요 · ' + deriveRubric(text).typeName + ' 유형');
+      toast(qSame ? (ans ? '내 답변을 저장했어요' : '내 답변을 지웠어요')
+                  : '수정했어요 · ' + deriveRubric(text).typeName + ' 유형');
     });
 
-    ta.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ok.click(); }
-      if (e.key === 'Escape') { e.preventDefault(); renderCustomList(); }
+    [ta, aa].forEach(function (el) {
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ok.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); renderCustomList(); }
+      });
     });
   }
 
@@ -6255,19 +6357,27 @@ input, textarea{ font:inherit; }
     if (!text) { toast('질문을 입력해 주세요'); ta.focus(); return; }
     if (custom.some(function (c) { return c.q === text; })) { toast('이미 추가한 질문이에요'); return; }
 
-    custom.push({ id: 'c' + Date.now() + '_' + Math.floor(Math.random() * 1000), q: text });
+    custom.push({
+      id: 'c' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      q: text,
+      a: $('newA').value.trim()
+    });
     save(K.custom, custom);
     ta.value = '';
+    $('newA').value = '';
     renderCustomList();
     render();
     buzz(14);
     var d = deriveRubric(text);
-    toast('「' + d.typeName + '」 유형으로 분석했어요 · 총 ' + custom.length + '개');
+    toast('「' + d.typeName + '」 유형으로 분석했어요 · 총 ' + custom.length + '개'
+      + (custom[custom.length - 1].a ? ' · 내 답변 저장됨' : ''));
     $('customList').parentElement.scrollTop = $('customList').scrollHeight;
   });
 
-  $('newQ').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('btnAdd').click(); }
+  ['newQ', 'newA'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('btnAdd').click(); }
+    });
   });
 
   $('btnCopyFav').addEventListener('click', function () {
