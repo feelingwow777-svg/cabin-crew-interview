@@ -6142,21 +6142,45 @@ input, textarea{ font:inherit; }
      ===================================================================== */
   var HF_URL = 'https://router.huggingface.co/v1/chat/completions';
 
+  // 값은 백만 토큰당 미국 달러. 첨삭 비용은 출력 단가가 거의 다 정한다.
+  // 공급자마다 조금씩 다르고, 가장 싼 곳 기준이다.
   var HF_MODELS = [
-    { id: 'Qwen/Qwen3-Next-80B-A3B-Instruct',
-      label: '기본',
-      note: '빠르고 크레딧을 적게 씁니다. 한국어 첨삭에 무난합니다. 보통 3~8초.' },
     { id: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
-      label: '정확',
-      note: '더 깊이 봅니다. 8~20초 걸리고 크레딧을 몇 배 더 씁니다.' },
+      label: '기본',
+      price: { i: 0.09, o: 0.55 },
+      note: '가장 크고 한국어가 좋습니다. 값도 싼 편이라 기본으로 둡니다. 8~20초.' },
     { id: 'google/gemma-4-31B-it',
-      label: '대안',
-      note: '위 두 모델이 혼잡하거나 오류가 날 때 씁니다.' }
+      label: '절약',
+      price: { i: 0.13, o: 0.38 },
+      note: '가장 저렴하고 빠릅니다. 첨삭이 조금 단순해질 수 있습니다. 3~8초.' },
+    { id: 'Qwen/Qwen3-Next-80B-A3B-Instruct',
+      label: '빠름',
+      price: { i: 0.09, o: 1.10 },
+      note: '응답이 가장 빠르지만 출력 단가가 두 배여서 크레딧이 빨리 줄어듭니다.' }
   ];
+
+  var HF_FREE_USD = 0.10;   // 무료 계정의 한 달 추론 크레딧
 
   var hfKey = load(K.hfkey, '') || '';
   var hfModel = load(K.hfmodel, HF_MODELS[0].id);
-  var aiStat = load(K.aistat, null) || { calls: 0, fail: 0, inTok: 0, outTok: 0, last: 0 };
+  var aiStat = load(K.aistat, null) || { calls: 0, fail: 0, inTok: 0, outTok: 0, last: 0, usd: 0, month: '' };
+  if (aiStat.usd == null) aiStat.usd = 0;
+
+  // 크레딧은 달마다 새로 채워지므로 달이 바뀌면 쓴 금액을 0으로 되돌린다
+  (function () {
+    var now = new Date();
+    var tag = now.getFullYear() + '-' + (now.getMonth() + 1);
+    if (aiStat.month !== tag) {
+      aiStat.month = tag;
+      aiStat.usd = 0;
+      save(K.aistat, aiStat);
+    }
+  }());
+
+  function hfPriceOf(id) {
+    var m = HF_MODELS.filter(function (x) { return x.id === id; })[0];
+    return m && m.price ? m.price : { i: 0.1, o: 0.6 };
+  }
   if (!HF_MODELS.some(function (m) { return m.id === hfModel; })) hfModel = HF_MODELS[0].id;
 
   function aiOn() { return !!(hfKey && hfKey.length > 12); }
@@ -6225,15 +6249,21 @@ input, textarea{ font:inherit; }
         aiStat.calls++;
         aiStat.last = Date.now();
         if (j.usage) {
-          aiStat.inTok += j.usage.prompt_tokens || 0;
-          aiStat.outTok += j.usage.completion_tokens || 0;
+          var pi = j.usage.prompt_tokens || 0;
+          var po = j.usage.completion_tokens || 0;
+          var pr = hfPriceOf(opt.model || hfModel);
+          aiStat.inTok += pi;
+          aiStat.outTok += po;
+          aiStat.usd += (pi * pr.i + po * pr.o) / 1000000;
         }
         save(K.aistat, aiStat);
+        renderAiBox();          // 남은 횟수 표시를 바로 갱신한다
         return text;
       });
     }).then(function (v) { done(); return v; }, function (e) {
       done();
       aiStat.fail++; save(K.aistat, aiStat);
+      renderAiBox();
       if (e && e.name === 'AbortError') throw new Error('시간이 초과됐습니다. 더 가벼운 모델로 바꿔 보세요.');
       if (e instanceof TypeError) throw new Error('인터넷 연결을 확인해 주세요.');
       throw e;
@@ -6979,8 +7009,19 @@ input, textarea{ font:inherit; }
   /* ---------- 설정: AI 첨삭 ---------- */
   function aiUsageText() {
     if (!aiStat.calls) return '아직 안 씀';
-    var tok = aiStat.inTok + aiStat.outTok;
-    return aiStat.calls + '회 · ' + (tok > 1000 ? Math.round(tok / 1000) + 'k' : tok) + '토큰';
+    return aiStat.calls + '회 · ' + (aiStat.usd < 0.001 ? '$0.001 미만' : '$' + aiStat.usd.toFixed(3));
+  }
+
+  /** 이번 달 무료 크레딧으로 앞으로 몇 번 더 볼 수 있는지 어림한다 */
+  function aiBudgetText() {
+    var pr = hfPriceOf(hfModel);
+    // 첨삭 한 번에 대략 입력 700 · 출력 600 토큰이 든다
+    var per = (700 * pr.i + 600 * pr.o) / 1000000;
+    var left = Math.max(0, HF_FREE_USD - aiStat.usd);
+    var n = Math.floor(left / per);
+    return '무료 크레딧 $' + HF_FREE_USD.toFixed(2) + ' 기준 한 달에 약 ' +
+           Math.floor(HF_FREE_USD / per) + '회 · 이번 달 ' + aiStat.calls + '회 써서 약 ' +
+           n + '회 남음 (실전평가 1회 = 문항 수만큼 소모)';
   }
 
   function renderAiBox() {
@@ -7009,7 +7050,7 @@ input, textarea{ font:inherit; }
     });
 
     var cur = HF_MODELS.filter(function (m) { return m.id === hfModel; })[0];
-    $('aiModelNote').textContent = cur ? cur.note : '';
+    $('aiModelNote').textContent = (cur ? cur.note + ' ' : '') + aiBudgetText();
     $('aiUsage').textContent = aiUsageText();
     $('btnAiClear').hidden = !aiOn();
   }
