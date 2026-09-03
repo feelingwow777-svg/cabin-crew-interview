@@ -138,6 +138,66 @@ input, textarea{ font:inherit; }
 /* ---------- 게이트 카드 ---------- */
 .gates{ display:flex; flex-direction:column; gap:13px; }
 
+/* 오늘의 연습 */
+.today{
+  border:1px solid color-mix(in srgb, var(--paper) 14%, var(--line));
+  border-radius:var(--r-lg); background:var(--ink-1);
+  padding:14px 16px 12px; display:flex; flex-direction:column; gap:10px;
+}
+.today__head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.today__t{ font-size:15px; font-weight:800; letter-spacing:-.02em; }
+.today__t small{ font-family:var(--t-mono); font-size:11px; font-weight:600; color:var(--fog-2); margin-left:8px; }
+.today__streak{
+  font-family:var(--t-mono); font-size:11px; font-weight:700; letter-spacing:.04em;
+  padding:3px 9px; border-radius:99px;
+  border:1px solid color-mix(in srgb, var(--amber) 45%, transparent); color:var(--amber);
+}
+.today__track{ height:5px; border-radius:99px; background:rgba(255,255,255,.09); overflow:hidden; }
+.today__bar{ height:100%; width:0; background:var(--green); border-radius:99px; transition:width .45s cubic-bezier(.2,.8,.25,1); }
+.today__list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.today__row{
+  display:flex; align-items:center; gap:10px; width:100%;
+  padding:9px 10px; border-radius:var(--r-sm);
+  border:1px solid var(--line); background:var(--ink-2);
+  text-align:left; color:var(--paper);
+}
+.today__row:active{ background:color-mix(in srgb, var(--paper) 6%, var(--ink-2)); }
+.today__why{
+  flex:none; min-width:52px; text-align:center;
+  font-size:10.5px; font-weight:800; letter-spacing:.03em;
+  padding:3px 7px; border-radius:99px; color:var(--why);
+  border:1px solid color-mix(in srgb, var(--why) 40%, transparent);
+  background:color-mix(in srgb, var(--why) 9%, transparent);
+}
+.today__q{ flex:1 1 auto; min-width:0; font-size:13px; line-height:1.45; }
+.today__ok{ flex:none; width:18px; height:18px; color:var(--green); opacity:0; }
+.today__row.is-done .today__q{ color:var(--fog-2); text-decoration:line-through; text-decoration-color:var(--fog-2); }
+.today__row.is-done .today__ok{ opacity:1; }
+.today__done{ font-size:12.5px; color:var(--green); font-weight:700; padding:4px 2px 0; }
+
+/* 답변 노트 */
+.note{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+.note li{
+  padding:13px 14px; border-radius:var(--r-md);
+  border:1px solid var(--line); background:var(--ink-2);
+  display:flex; flex-direction:column; gap:8px;
+}
+.note__q{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; font-size:13.5px; font-weight:800; line-height:1.45; }
+.note__score{
+  flex:none; font-family:var(--t-mono); font-size:11px; font-weight:700;
+  padding:2px 8px; border-radius:99px; border:1px solid var(--line-2); color:var(--fog-2);
+}
+.note__score.is-good{ color:var(--green); border-color:color-mix(in srgb, var(--green) 45%, transparent); }
+.note__a{ font-size:13px; line-height:1.7; color:var(--fog); white-space:pre-wrap; }
+.note__acts{ display:flex; gap:8px; justify-content:flex-end; }
+.note__ta{
+  width:100%; min-height:110px; resize:vertical;
+  padding:12px 13px; border-radius:var(--r-md);
+  border:1px solid var(--green); background:var(--ink);
+  color:var(--paper); font-size:14px; line-height:1.65;
+}
+.note__ta:focus{ outline:none; }
+
 /* 구역 머리말 — 연습 / 평가 */
 .zone{
   display:flex; align-items:baseline; gap:10px;
@@ -1482,12 +1542,23 @@ input, textarea{ font:inherit; }
 
     <div class="stats">
       <div><span class="stat__num" id="statTotal">0</span><span class="stat__cap">전체 질문</span></div>
-      <div><span class="stat__num" id="statDrawn">0</span><span class="stat__cap">뽑은 횟수</span></div>
-      <div><span class="stat__num" id="statFav">0</span><span class="stat__cap">저장함</span></div>
+      <div><span class="stat__num" id="statToday">0</span><span class="stat__cap">오늘 답변</span></div>
+      <div><span class="stat__num" id="statStreak">0</span><span class="stat__cap">연속 일수</span></div>
+      <span hidden id="statDrawn"></span><span hidden id="statFav"></span>
     </div>
   </header>
 
   <main class="gates">
+    <section class="today" id="today">
+      <div class="today__head">
+        <span class="today__t">오늘의 연습 <small id="todayProg">0 / 5</small></span>
+        <span class="today__streak" id="todayStreak">연속 0일</span>
+      </div>
+      <div class="today__track"><div class="today__bar" id="todayBar"></div></div>
+      <ul class="today__list" id="todayList"></ul>
+      <p class="today__done" id="todayDone" hidden>오늘 몫을 다 했어요. 내일 새 다섯 문항이 나옵니다.</p>
+    </section>
+
     <div class="zone">
       <span class="zone__k">Practice</span>
       <span class="zone__t">연습하기</span>
@@ -1628,6 +1699,10 @@ input, textarea{ font:inherit; }
     <button class="linkrow" id="btnRecs">
       녹음함
       <span class="muted" id="recHint">0개</span>
+    </button>
+    <button class="linkrow" id="btnNote">
+      답변 노트
+      <span class="muted" id="noteHint">0개</span>
     </button>
     <button class="linkrow" id="btnFav">
       저장한 질문 보기
@@ -2037,6 +2112,7 @@ input, textarea{ font:inherit; }
           <button class="chip" data-scope="all" aria-pressed="true">전체</button>
           <button class="chip" data-scope="official">기출만</button>
           <button class="chip" data-scope="fail">못했던 것</button>
+          <button class="chip" data-scope="real">실전 순서</button>
         </div>
       </div>
 
@@ -2153,6 +2229,37 @@ input, textarea{ font:inherit; }
       <button class="btn btn--ghost" id="ansToRecs" style="width:100%">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
         녹음함에서 다시 듣기
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== 답변 노트 ========== -->
+<div class="sheet" id="sheetNote" hidden role="dialog" aria-modal="true" aria-label="답변 노트">
+  <div class="sheet__panel" style="--sig:var(--green)">
+    <div class="sheet__grip"></div>
+    <div class="sheet__head">
+      <h2>답변 노트 <span class="sheetcount" id="noteCount"></span></h2>
+      <button class="iconbtn" data-close="sheetNote" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <p class="prefs__note" style="margin:0 0 12px">
+        적어 둔 답변을 한곳에 모았습니다. 면접장 가는 길에 훑어보고, 눌러서 바로 고칠 수 있습니다.
+        점수는 이 질문에 마지막으로 받은 AI 첨삭입니다.
+      </p>
+      <ul class="note" id="noteList"></ul>
+      <div class="empty" id="noteEmpty" hidden>
+        <strong>아직 적어 둔 답변이 없어요</strong>
+        질문을 뽑고 첨삭을 받은 뒤 <em>내 답변으로 저장</em>을 누르거나,<br>내 질문에 답변을 함께 적어 두세요.
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" id="btnNoteCopy" style="width:100%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
+        전체 복사
       </button>
     </div>
   </div>
@@ -2835,6 +2942,7 @@ input, textarea{ font:inherit; }
     myans:    'ccq.myans.v1',      // 기출 질문에 적어 둔 내 답변
     weak:     'ccq.weak.v1',       // 약한 질문 먼저 뽑기
     fold:     'ccq.fold.v1',       // 어떤 설정 묶음을 펼쳐 뒀는지
+    daily:    'ccq.daily.v1',      // 날짜별 활동 (오늘의 연습 · 연속 일수)
     cutoff:   'ccq.cutoff.v1'      // 시간이 다 되면 녹음을 끊는다
   };
 
@@ -3130,6 +3238,8 @@ input, textarea{ font:inherit; }
     $('statTotal').textContent = OFFICIAL.length + custom.length;
     $('statDrawn').textContent = drawn;
     $('statFav').textContent   = favs.length;
+    if (typeof renderToday === 'function') renderToday();
+    if ($('noteHint')) $('noteHint').textContent = noteEntries().length + '개';
     $('favHint').textContent   = favs.length + '개';
 
     Object.keys(MODES).forEach(function (mode) {
@@ -3487,6 +3597,259 @@ input, textarea{ font:inherit; }
     render();
   }
 
+  /* ---------- 답변 노트 ---------- */
+  /** 내 답변이 있는 모든 질문. 내 질문 목록의 것과 기출 저장소의 것을 합친다. */
+  function noteEntries() {
+    var out = [];
+    custom.forEach(function (c) { if (c.a) out.push({ q: c.q, a: c.a, t: '내 질문' }); });
+    var bank = load(K.myans, null) || {};
+    var known = {};
+    OFFICIAL.forEach(function (it) { known[it.q] = it.t; });
+    Object.keys(bank).forEach(function (q) {
+      if (!bank[q]) return;
+      if (custom.some(function (c) { return c.q === q; })) return;
+      out.push({ q: q, a: bank[q], t: known[q] || '기타' });
+    });
+    return out;
+  }
+
+  function lastScoreOf(q) {
+    var h = aiHistOf(q);
+    return h.length ? h[h.length - 1].score : null;
+  }
+
+  function renderNote() {
+    var list = noteEntries();
+    var ul = $('noteList');
+    ul.innerHTML = '';
+    $('noteEmpty').hidden = list.length > 0;
+    $('noteCount').textContent = list.length ? list.length + '개' : '';
+    $('btnNoteCopy').disabled = !list.length;
+
+    list.forEach(function (e) {
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.className = 'note__q';
+      var qs = document.createElement('span');
+      qs.textContent = e.q;
+      head.appendChild(qs);
+      var sc = lastScoreOf(e.q);
+      var badge = document.createElement('span');
+      badge.className = 'note__score' + (sc !== null && sc >= 70 ? ' is-good' : '');
+      badge.textContent = sc === null ? e.t : sc + '점';
+      head.appendChild(badge);
+
+      var body = document.createElement('div');
+      body.className = 'note__a';
+      body.textContent = e.a;
+
+      var acts = document.createElement('div');
+      acts.className = 'note__acts';
+      var go = document.createElement('button');
+      go.className = 'qbtn';
+      go.textContent = '연습';
+      go.addEventListener('click', function () {
+        var it = pool('all').filter(function (x) { return x.q === e.q; })[0] || { q: e.q, t: e.t };
+        closeSheet('sheetNote');
+        askOne(it, '답변 노트', 'var(--green)');
+      });
+      var edit = document.createElement('button');
+      edit.className = 'qbtn qbtn--go';
+      edit.textContent = '고치기';
+      edit.addEventListener('click', function () {
+        var ta = document.createElement('textarea');
+        ta.className = 'note__ta';
+        ta.value = e.a;
+        var row = document.createElement('div');
+        row.className = 'note__acts';
+        var cancel = document.createElement('button');
+        cancel.className = 'qbtn'; cancel.textContent = '취소';
+        var ok = document.createElement('button');
+        ok.className = 'qbtn qbtn--go'; ok.textContent = '저장';
+        cancel.addEventListener('click', renderNote);
+        ok.addEventListener('click', function () {
+          var t = ta.value.trim();
+          setMyAnswer(e.q, t);
+          renderNote();
+          toast(t ? '답변을 고쳤어요' : '답변을 지웠어요');
+          buzz(12);
+        });
+        row.appendChild(cancel); row.appendChild(ok);
+        body.replaceWith(ta);
+        acts.replaceWith(row);
+        ta.focus();
+      });
+      acts.appendChild(go); acts.appendChild(edit);
+
+      li.appendChild(head); li.appendChild(body); li.appendChild(acts);
+      ul.appendChild(li);
+    });
+  }
+
+  /* ---------- 날짜별 활동 · 연속 일수 ---------- */
+  function dayKey(d) {
+    d = d || new Date();
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  var daily = load(K.daily, null) || {};
+
+  /** 오늘 무엇을 했는지 한 번 더 센다. 질문은 그날 처음 답한 것만 목록에 남긴다. */
+  function logToday(kind, q) {
+    var k = dayKey();
+    var d = daily[k] || (daily[k] = { marks: 0, exams: 0, ai: 0, qs: [] });
+    if (kind === 'mark') { d.marks++; if (q && d.qs.indexOf(q) === -1) d.qs.push(q); }
+    else if (kind === 'exam') d.exams++;
+    else if (kind === 'ai') d.ai++;
+    // 오래된 날은 지운다 (연속 계산에 90일이면 충분하다)
+    var keys = Object.keys(daily).sort();
+    while (keys.length > 90) delete daily[keys.shift()];
+    save(K.daily, daily);
+    renderToday();
+  }
+
+  function dayHad(k) {
+    var d = daily[k];
+    return !!(d && (d.marks || d.exams || d.ai));
+  }
+
+  /** 오늘(또는 어제)부터 거슬러 올라가며 연속으로 활동한 날 수 */
+  function streakDays() {
+    var n = 0;
+    var cur = new Date();
+    if (!dayHad(dayKey(cur))) cur.setDate(cur.getDate() - 1);   // 오늘 아직 안 했어도 어제까지의 연속은 살아 있다
+    while (dayHad(dayKey(cur))) { n++; cur.setDate(cur.getDate() - 1); }
+    return n;
+  }
+
+  /* ---------- 오늘의 다섯 문항 ---------- */
+  // 같은 날에는 같은 다섯 개가 나와야 한다. 날짜로 씨앗을 만든다.
+  function seeded(seed) {
+    var h = 2166136261;
+    for (var i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return function () {
+      h += 0x6D2B79F5; var t = h;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var WHY = {
+    weak:  { label: '약한 것', color: 'var(--red)' },
+    fail:  { label: '못했음',  color: 'var(--red)' },
+    mine:  { label: '외우기',  color: 'var(--green)' },
+    fresh: { label: '처음',    color: 'var(--blue)' },
+    any:   { label: '무작위',  color: 'var(--amber)' }
+  };
+
+  /**
+   * 오늘의 다섯: 가장 약한 것 · 못했던 것 · 내 답변 있는 것(외우기) · 아직 안 한 것 · 무작위.
+   * 같은 문항은 한 번만. 채울 게 없는 칸은 무작위로 메운다.
+   */
+  function todaySet() {
+    var all = pool('all');
+    if (!all.length) return [];
+    var k = dayKey();
+
+    // 하루치는 한 번 정하면 그날 안에서는 바뀌지 않아야 한다.
+    // 답변 표시가 붙는 순간 '약한 것' 후보가 달라져 목록이 통째로 바뀌면
+    // 방금 답한 질문이 목록에서 사라져 체크가 되지 않는다.
+    var kept = daily[k] && daily[k].set;
+    if (kept && kept.length) {
+      var byQ = {};
+      all.forEach(function (it) { byQ[it.q] = it; });
+      var restored = [];
+      kept.forEach(function (row) {
+        var cut = row.indexOf('	');
+        var why = row.slice(0, cut), q = row.slice(cut + 1);
+        if (byQ[q] && WHY[why]) restored.push({ why: why, item: byQ[q] });
+      });
+      if (restored.length) return restored;
+    }
+
+    var rnd = seeded(k + '|' + all.length);
+    var taken = {};
+    var pickFrom = function (list) {
+      var c = list.filter(function (it) { return !taken[it.q]; });
+      if (!c.length) return null;
+      var it = c[Math.floor(rnd() * c.length)];
+      taken[it.q] = true;
+      return it;
+    };
+    var byWeak = all.slice().sort(function (a, b) { return weakness(a.q) - weakness(b.q); });
+    var out = [];
+    var add = function (why, it) { if (it) out.push({ why: why, item: it }); };
+
+    add('weak',  pickFrom(byWeak.slice(0, Math.max(3, Math.ceil(all.length / 5)))));
+    add('fail',  pickFrom(all.filter(function (it) { return getStatus(it.q) === ST.FAIL; })));
+    add('mine',  pickFrom(all.filter(function (it) { return !!myAnswerFor(it.q); })));
+    add('fresh', pickFrom(all.filter(function (it) { return !getStatus(it.q); })));
+    while (out.length < 5) { var r = pickFrom(all); if (!r) break; add('any', r); }
+    out = out.slice(0, 5);
+
+    var d = daily[k] || (daily[k] = { marks: 0, exams: 0, ai: 0, qs: [] });
+    d.set = out.map(function (e) { return e.why + '	' + e.item.q; });
+    save(K.daily, daily);
+    return out;
+  }
+
+  function renderToday() {
+    var box = $('today');
+    if (!box) return;
+    var set = todaySet();
+    var d = daily[dayKey()] || { qs: [] };
+    var done = set.filter(function (e) { return d.qs.indexOf(e.item.q) !== -1; }).length;
+
+    $('todayProg').textContent = done + ' / ' + set.length;
+    $('todayBar').style.width = (set.length ? Math.round(done / set.length * 100) : 0) + '%';
+    var st = streakDays();
+    $('todayStreak').textContent = '연속 ' + st + '일';
+    $('todayDone').hidden = !(set.length && done === set.length);
+    if ($('statToday')) $('statToday').textContent = d.marks || 0;
+    if ($('statStreak')) $('statStreak').textContent = st;
+
+    var ul = $('todayList');
+    ul.innerHTML = '';
+    set.forEach(function (e) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.className = 'today__row' + (d.qs.indexOf(e.item.q) !== -1 ? ' is-done' : '');
+      b.style.setProperty('--why', WHY[e.why].color);
+      b.innerHTML = '<span class="today__why"></span><span class="today__q"></span>' +
+        '<svg class="today__ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5.5 5.5L20 7"/></svg>';
+      b.querySelector('.today__why').textContent = WHY[e.why].label;
+      b.querySelector('.today__q').textContent = e.item.q;
+      b.addEventListener('click', function () { askOne(e.item, '오늘의 연습', 'var(--paper)'); });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+  }
+
+  /** 정해진 질문 하나를 무대에 올린다 (뽑기가 아니라 지정) */
+  function askOne(item, catLabel, color) {
+    current = item;
+    if (!current.a) current.a = myAnswerFor(current.q);
+    currentMode = currentMode || 'all';
+
+    stage.style.setProperty('--sig', color || 'var(--paper)');
+    $('passCat').textContent = catLabel || '지정';
+    $('passTag').textContent = item.t || '';
+    $('stageRemain').textContent = '';
+    $('passCode').textContent = 'Q.—';
+    $('passQ').textContent = item.q;
+
+    syncFavBtn();
+    syncDoneBtn();
+    closeTip();
+    hideMyAnswer();
+    stopTimer();
+    openStage();
+    drawBarcode();
+    buzz(12);
+  }
+
   /**
    * 첨삭이 내놓은 꼬리질문을 그 자리에서 연습한다.
    * 실제 면접에서 어려운 건 첫 질문이 아니라 이어지는 질문이다.
@@ -3682,6 +4045,7 @@ input, textarea{ font:inherit; }
   function mark(kind) {
     if (!current || advancing) return;
     setStatus(current.q, kind);
+    logToday('mark', current.q);
     syncDoneBtn();
     render();
 
@@ -4972,6 +5336,13 @@ input, textarea{ font:inherit; }
         '"~습니다"가 또렷하게 끝납니다. 자신감 있게 들리는 가장 큰 요인입니다.');
     }
 
+    // 억양 폭도 성량 기복도 거의 없이 끊김 없이 이어지면 읽는 소리로 들린다
+    if (m.f0RangeSemitone > 0 && m.f0RangeSemitone < 3 && m.loudnessCV < 0.3 && m.speechRatio > 0.85) {
+      push('warn', '외운 티가 납니다',
+        '억양 폭 ' + m.f0RangeSemitone.toFixed(1) + '반음, 성량 기복 ' + m.loudnessCV.toFixed(2) + '로 처음부터 끝까지 한 결입니다. ' +
+        '면접관은 이것을 "준비는 했지만 대화는 아니다"로 듣습니다. 강조할 단어 한두 곳만 골라 거기서 톤을 올리세요.');
+    }
+
     if (m.loudness < 0.022) {
       push('bad', '목소리가 작습니다',
         '기내 소음과 마스크를 감안하면 지금보다 확실히 크게 내야 합니다. 배에 힘을 주고 문장 첫 음절을 세게 시작해 보세요.');
@@ -4991,6 +5362,28 @@ input, textarea{ font:inherit; }
 
     if (!fb.length) push('good', '전반적으로 안정적입니다', '두드러진 문제가 없습니다. 이 상태를 유지하세요.');
     return fb;
+  }
+
+  /**
+   * 실전 순서: 자기소개 → 지원동기 → 나머지는 무작위.
+   * 실제 면접은 거의 늘 이 순서로 시작한다.
+   */
+  function examRealOrder(n) {
+    var all = pool('all');
+    var rnd = function (list) { return list[Math.floor(Math.random() * list.length)]; };
+    var used = {};
+    var take = function (tag) {
+      var c = all.filter(function (it) { return it.t === tag && !used[it.q]; });
+      if (!c.length) return null;
+      var it = rnd(c); used[it.q] = true; return it;
+    };
+    var out = [];
+    var a = take('자기소개'); if (a) out.push(a);
+    var b = take('지원동기'); if (b) out.push(b);
+    var rest = all.filter(function (it) { return !used[it.q] && it.t !== '자기소개' && it.t !== '지원동기'; });
+    for (var i = rest.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = rest[i]; rest[i] = rest[j]; rest[j] = t; }
+    while (out.length < n && rest.length) out.push(rest.shift());
+    return out.slice(0, n);
   }
 
   function examPool() {
@@ -5076,7 +5469,9 @@ input, textarea{ font:inherit; }
       var j = Math.floor(Math.random() * (i + 1));
       var t = bag[i]; bag[i] = bag[j]; bag[j] = t;
     }
-    exam.list = bag.slice(0, Math.min(exam.n, bag.length));
+    exam.list = exam.scope === 'real'
+      ? examRealOrder(exam.n)
+      : bag.slice(0, Math.min(exam.n, bag.length));
     exam.idx = 0;
     exam.results = [];
     exam.pending = [];
@@ -5389,6 +5784,7 @@ input, textarea{ font:inherit; }
 
   function showReport() {
     exam.running = false;
+    logToday('exam');
     stopExamTimer();
     releaseMic();               // 모든 문항이 끝났으니 마이크를 놓는다
     flushExamPending();         // 더 이상 녹음이 없으니 미뤄 둔 분석을 모두 실행
@@ -7045,6 +7441,7 @@ input, textarea{ font:inherit; }
           at: Date.now()
         };
         aiHistPush(item.q, out.score, out.axes);
+        logToday('ai');
         aiCacheSet(sig, out);
         return out;
       });
@@ -7717,6 +8114,14 @@ input, textarea{ font:inherit; }
     // 질문이 있으면 키보드가 목록을 가려서 오히려 보기 어렵다.
     if (!custom.length) setTimeout(function () { $('newQ').focus(); }, 320);
   }
+
+  $('btnNote').addEventListener('click', function () { renderNote(); openSheet('sheetNote'); });
+  $('btnNoteCopy').addEventListener('click', function () {
+    var list = noteEntries();
+    if (!list.length) return;
+    var text = list.map(function (e, i) { return (i + 1) + '. ' + e.q + '\n' + e.a; }).join('\n\n');
+    copyText(text, list.length + '개 답변을 복사했어요');
+  });
 
   $('btnManage').addEventListener('click', openCustomSheet);
   $('btnMyQ').addEventListener('click', openCustomSheet);
