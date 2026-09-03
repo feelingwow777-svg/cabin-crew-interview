@@ -1582,6 +1582,15 @@ input, textarea{ font:inherit; }
       <span class="exrow__label">답변 분석</span>
       <p class="prefs__note" id="anModeNote"></p>
 
+      <div class="exsrc" id="sttModeBox">
+        <span class="exrow__label">받아쓰기 위치</span>
+        <div class="chips" id="sttMode">
+          <button class="chip" data-s="local">폰에서</button>
+          <button class="chip" data-s="cloud">클라우드</button>
+        </div>
+        <p class="prefs__note" id="sttModeNote"></p>
+      </div>
+
       <div class="modelbox" id="modelBox">
         <div class="modelbox__top">
           <span class="modelbox__k">음성인식 모델</span>
@@ -2631,7 +2640,8 @@ input, textarea{ font:inherit; }
     hfkey:    'ccq.hfkey.v1',      // 사용자의 허깅페이스 토큰 (이 기기에만 저장)
     hfmodel:  'ccq.hfmodel.v1',
     aicache:  'ccq.aicache.v1',
-    aistat:   'ccq.aistat.v1'
+    aistat:   'ccq.aistat.v1',
+    sttmode:  'ccq.sttmode.v1'     // 'local' | 'cloud'
   };
 
   function load(key, fallback) {
@@ -2972,10 +2982,13 @@ input, textarea{ font:inherit; }
 
   /* ---------- 분석 안내 ---------- */
   function syncAnMode() {
+    // 받아쓰기를 어디서 하느냐에 따라 사실이 달라지므로 문구도 같이 바뀐다
     $('anModeNote').innerHTML =
       '답변을 녹음하면 <b>녹음 파일 · 받아쓴 내용 · 목소리 분석</b>이 한 번에 나옵니다. ' +
-      '받아쓰기는 기기 안에서 처리되어 밖으로 나가지 않습니다. ' +
-      '이를 위해 <b>처음 한 번 약 40MB</b>를 내려받습니다 (Wi-Fi 권장).';
+      (typeof sttMode !== 'undefined' && sttMode === 'cloud' && aiOn()
+        ? '지금은 받아쓰기를 <b>클라우드</b>에서 합니다 — 내려받을 것은 없고, 녹음 파일이 기기 밖으로 나갑니다.'
+        : '받아쓰기는 기기 안에서 처리되어 밖으로 나가지 않습니다. ' +
+          '이를 위해 <b>처음 한 번 약 40MB</b>를 내려받습니다 (Wi-Fi 권장).');
     syncModelBox();
     if (!$('sheetAnswer')) return;
     syncRecBtn(!!(rec && rec.isActive()));
@@ -5232,6 +5245,7 @@ input, textarea{ font:inherit; }
         (workerGpu === null ? '확인 전' : (workerGpu ? '가능' : '불가')));
     if (gpuFellBack) row(env, 'GPU 실패 사유', gpuFellBack);
     row(env, 'AI 첨삭', aiOn() ? ('켜짐 · ' + aiModelLabel()) : '꺼짐 (토큰 없음)');
+    row(env, '받아쓰기 위치', sttMode === 'cloud' ? (aiOn() ? '클라우드' : '클라우드 (토큰 없어 폰으로 처리)') : '폰에서');
     row(env, 'AI 호출', aiStat.calls + '회 성공 · ' + aiStat.fail + '회 실패');
     row(env, 'AI 토큰 사용', (aiStat.inTok + aiStat.outTok) + ' (입력 ' + aiStat.inTok + ' / 출력 ' + aiStat.outTok + ')');
     row(env, '앱 버전', document.lastModified || '알 수 없음');
@@ -6020,10 +6034,119 @@ input, textarea{ font:inherit; }
     return whisper(pcm, opts);
   }
 
+
+  /* =====================================================================
+     클라우드 받아쓰기
+     ---------------------------------------------------------------------
+     폰 안에서 도는 Whisper 는 폰에 들어가는 크기까지만 쓸 수 있어
+     한국어 인식이 아쉽다. 같은 허깅페이스 토큰으로 큰 모델에 보내면
+     훨씬 정확하다. 대신 녹음 파일이 기기 밖으로 나가므로 기본값은
+     '폰에서' 로 두고, 사용자가 직접 켜게 한다.
+     ===================================================================== */
+  var STT_URL = 'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo';
+  var STT_USD_PER_SEC = 0.00000333;   // 공급자 단가, 어림값
+  var STT_MAX_SEC = 600;
+
+  var sttMode = load(K.sttmode, 'local');
+  if (sttMode !== 'cloud') sttMode = 'local';
+
+  function cloudSttOn() { return sttMode === 'cloud' && aiOn(); }
+
+  /** 16kHz 모노 PCM 을 WAV 로 감싼다.
+   *  녹음 원본(webm/opus)을 그대로 보내면 서버가 못 읽는 경우가 있어,
+   *  이미 디코딩해 둔 것을 어디서나 통하는 형식으로 다시 담는다. */
+  function wavFromPcm(pcm, rate) {
+    var n = pcm.length;
+    var buf = new ArrayBuffer(44 + n * 2);
+    var v = new DataView(buf);
+    var wr = function (o, str) { for (var i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    wr(0, 'RIFF');  v.setUint32(4, 36 + n * 2, true);  wr(8, 'WAVE');
+    wr(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true);       // PCM
+    v.setUint16(22, 1, true);       // 모노
+    v.setUint32(24, rate, true);
+    v.setUint32(28, rate * 2, true);
+    v.setUint16(32, 2, true);
+    v.setUint16(34, 16, true);
+    wr(36, 'data'); v.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) {
+      var x = pcm[i] < -1 ? -1 : (pcm[i] > 1 ? 1 : pcm[i]);
+      v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7FFF, true);
+    }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  function cloudTranscribe(wav, durSec, onStage) {
+    if (!aiOn()) return Promise.reject(new Error('설정에서 허깅페이스 토큰을 먼저 넣어 주세요.'));
+    if (durSec > STT_MAX_SEC) return Promise.reject(new Error('녹음이 너무 깁니다 (10분 초과).'));
+    if (onStage) onStage('클라우드로 보내는 중…');
+
+    var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 120000);
+
+    return fetch(STT_URL, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + hfKey, 'Content-Type': 'audio/wav' },
+      body: wav,
+      signal: ctl ? ctl.signal : undefined
+    }).then(function (res) {
+      return res.text().then(function (raw) {
+        if (!res.ok) throw new Error(hfErr(res.status, raw));
+        var j;
+        try { j = JSON.parse(raw); }
+        catch (e) { throw new Error('받아쓰기 응답을 읽지 못했습니다.'); }
+        var text = String((j && j.text) || (j && j[0] && j[0].text) || '').trim();
+        if (!text) throw new Error('말소리가 인식되지 않았습니다.');
+
+        aiStat.calls++;
+        aiStat.usd += durSec * STT_USD_PER_SEC;
+        aiStat.last = Date.now();
+        save(K.aistat, aiStat);
+        renderAiBox();
+        return text;
+      });
+    }).then(function (v) { clearTimeout(timer); return v; }, function (e) {
+      clearTimeout(timer);
+      aiStat.fail++; save(K.aistat, aiStat);
+      if (e && e.name === 'AbortError') throw new Error('클라우드 받아쓰기 시간이 초과됐습니다.');
+      if (e instanceof TypeError) throw new Error('인터넷 연결을 확인해 주세요.');
+      throw e;
+    });
+  }
+
   function pumpWhisper() {
     if (whisperBusy || !whisperQueue.length) return;
     whisperBusy = true;
     var job = whisperQueue.shift();
+    var next = function () { whisperBusy = false; pumpWhisper(); };
+
+    if (cloudSttOn()) runCloudJob(job, next);
+    else runLocalJob(job, next);
+  }
+
+  /** 클라우드로 처리하고, 실패하면 폰 안 모델로 넘긴다 */
+  function runCloudJob(job, next) {
+    var durSec = 0;
+    blobToPcm16k(job.blob)
+      .then(function (pcm) {
+        durSec = pcm.length / 16000;
+        return cloudTranscribe(wavFromPcm(pcm, 16000), durSec, job.onStage);
+      })
+      .then(function (text) { job.onDone(text, null); next(); })
+      .catch(function (e) {
+        var msg = String((e && e.message) || e).slice(0, 140);
+        // 폰 안 모델이 이미 있으면 조용히 그쪽으로 넘긴다
+        if (whisperReady()) {
+          if (job.onStage) job.onStage('클라우드가 실패해 폰에서 처리합니다…');
+          runLocalJob(job, next);
+          return;
+        }
+        job.onDone('', msg);
+        next();
+      });
+  }
+
+  function runLocalJob(job, next) {
     var pcmCache = null;
 
     loadWhisper()
@@ -6065,10 +6188,20 @@ input, textarea{ font:inherit; }
             }); })
             .then(function (r2) { job.onDone((r2 && r2.text ? r2.text : '').trim(), null); });
         }
+
+        // 폰에서 나온 글자가 깨졌고 토큰이 있으면 클라우드로 한 번 더 본다
+        if (looksBroken(text, job.lang) && aiOn() && !job.triedCloud) {
+          job.triedCloud = true;
+          if (job.onStage) job.onStage('인식이 불안정해 클라우드로 다시 시도합니다…');
+          return cloudTranscribe(wavFromPcm(pcmCache, 16000), pcmCache.length / 16000, job.onStage)
+            .then(function (t2) { job.onDone(t2, null); })
+            .catch(function () { job.onDone(text, null); });   // 그래도 안 되면 있는 대로
+        }
+
         job.onDone(text, null);
       })
       .catch(function (e) { job.onDone('', String(e && e.message || e).slice(0, 140)); })
-      .then(function () { whisperBusy = false; pumpWhisper(); });
+      .then(next);
   }
 
   /** 진단 정보 → 사람이 읽을 수 있는 실패 원인 */
@@ -7025,6 +7158,7 @@ input, textarea{ font:inherit; }
   }
 
   function renderAiBox() {
+    if ($('sttMode')) renderSttMode();
     var st = $('aiState');
     if (aiOn()) { st.textContent = '켜짐'; st.className = 'aistate is-on'; }
     else { st.textContent = '꺼짐'; st.className = 'aistate'; }
@@ -7110,6 +7244,45 @@ input, textarea{ font:inherit; }
 
   renderAiBox();
 
+
+  /* ---------- 설정: 받아쓰기 위치 ---------- */
+  function renderSttMode() {
+    var chips = $('sttMode');
+    [].forEach.call(chips.children, function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.s === sttMode));
+    });
+
+    var note;
+    if (sttMode === 'cloud') {
+      note = aiOn()
+        ? '녹음을 허깅페이스로 보내 큰 모델로 받아씁니다. 한국어 인식이 확실히 좋고 ' +
+          '470MB 내려받기도 필요 없습니다. 대신 녹음 파일이 기기 밖으로 나가고, ' +
+          '1분당 약 $0.0002 로 첨삭과 같은 크레딧을 씁니다. 실패하면 폰 안 모델로 넘어갑니다.'
+        : '토큰이 없어 지금은 동작하지 않습니다. 위 「AI 첨삭」에 허깅페이스 토큰을 먼저 넣어 주세요.';
+    } else {
+      note = '녹음이 기기 밖으로 나가지 않습니다. 처음 한 번 모델을 내려받아야 하고, ' +
+             '폰에 들어가는 크기까지만 쓸 수 있어 한국어 인식이 아쉬울 수 있습니다.' +
+             (aiOn() ? ' 결과가 깨지면 클라우드로 한 번 더 시도합니다.' : '');
+    }
+    $('sttModeNote').textContent = note;
+
+    // 클라우드만 쓸 때는 내려받기 상자를 접어 둔다 (실패 대비로 남겨는 둔다)
+    $('modelBox').hidden = sttMode === 'cloud' && aiOn() && !whisperReady();
+  }
+
+  [].forEach.call($('sttMode').children, function (b) {
+    b.addEventListener('click', function () {
+      sttMode = b.dataset.s;
+      save(K.sttmode, sttMode);
+      renderSttMode();
+      render();
+      buzz(8);
+      if (sttMode === 'cloud' && !aiOn()) toast('허깅페이스 토큰을 먼저 넣어 주세요');
+    });
+  });
+
+  renderSttMode();
+
   // 점검용 통로. 화면 조작 없이 첨삭 표시를 확인할 때 쓴다.
   // 비밀은 담기지 않는다 — 토큰은 여기 없고 저장소에만 있다.
   window.__ccq = {
@@ -7117,6 +7290,10 @@ input, textarea{ font:inherit; }
     aiCoach: aiCoach,
     aiGuide: aiGuide,
     showAnswerReport: showAnswerReport,
+    cloudTranscribe: cloudTranscribe,
+    wavFromPcm: wavFromPcm,
+    enqueueTranscribe: enqueueTranscribe,
+    setSttMode: function (m) { sttMode = m; save(K.sttmode, m); renderSttMode(); },
     renderExamAi: renderExamAi,
     exam: exam
   };
