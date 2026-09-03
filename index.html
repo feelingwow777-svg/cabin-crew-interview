@@ -138,6 +138,85 @@ input, textarea{ font:inherit; }
 /* ---------- 게이트 카드 ---------- */
 .gates{ display:flex; flex-direction:column; gap:13px; }
 
+/* 카드마다 붙는 코치 줄 */
+.gate__coach{
+  display:flex; align-items:center; gap:8px; width:100%;
+  min-height:40px; padding:0 12px;
+  border-radius:var(--r-sm);
+  border:1px dashed color-mix(in srgb, var(--sig) 42%, transparent);
+  background:color-mix(in srgb, var(--sig) 6%, transparent);
+  font-size:12.5px; font-weight:700; color:var(--sig);
+}
+.gate__coach:active{ background:color-mix(in srgb, var(--sig) 14%, transparent); }
+.gate__coach svg{ width:15px; height:15px; flex:none; }
+.gate__coach__s{
+  margin-left:auto; min-width:0;
+  font-family:var(--t-mono); font-size:10.5px; font-weight:600; color:var(--fog-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* 코칭 시트 */
+.coachsum{
+  display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px;
+}
+.coachsum span{
+  font-family:var(--t-mono); font-size:11px; font-weight:600;
+  padding:5px 10px; border-radius:99px;
+  border:1px solid var(--line-2); color:var(--fog);
+}
+.coachsum span b{ color:var(--paper); font-weight:700; }
+.coachsum span.is-bad{ color:var(--red); border-color:color-mix(in srgb, var(--red) 40%, transparent); }
+.coachsum span.is-good{ color:var(--green); border-color:color-mix(in srgb, var(--green) 40%, transparent); }
+
+.coachhead{
+  margin:0 0 10px;
+  font-size:17px; font-weight:800; line-height:1.45; letter-spacing:-.02em;
+  color:var(--paper);
+}
+.coachstate{
+  margin:0 0 4px; padding:13px 14px;
+  border-radius:var(--r-md); border:1px solid var(--line); background:var(--ink-2);
+  font-size:13.5px; line-height:1.75; color:var(--fog);
+}
+.coachplan{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; counter-reset:cp; }
+.coachplan li{
+  position:relative; padding:12px 14px 12px 44px;
+  border-radius:var(--r-md); border:1px solid var(--line); background:var(--ink-2);
+}
+.coachplan li::before{
+  counter-increment:cp; content:counter(cp);
+  position:absolute; left:13px; top:12px;
+  width:21px; height:21px; border-radius:50%;
+  display:grid; place-items:center;
+  font-family:var(--t-mono); font-size:11px; font-weight:800;
+  color:#0A0D14; background:var(--sig);
+}
+.coachplan b{ display:block; font-size:13px; margin-bottom:3px; color:var(--paper); }
+.coachplan span{ font-size:12.5px; line-height:1.7; color:var(--fog); }
+
+.coachq{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; }
+.coachq button{
+  display:flex; align-items:center; gap:9px; width:100%;
+  padding:11px 12px; border-radius:var(--r-sm);
+  border:1px solid var(--line); background:var(--ink-2);
+  font-size:13px; line-height:1.5; color:var(--paper); text-align:left;
+}
+.coachq button:active{ background:color-mix(in srgb, var(--paper) 6%, var(--ink-2)); }
+.coachq svg{ width:15px; height:15px; flex:none; color:var(--sig); }
+.coachq span{ flex:1 1 auto; min-width:0; }
+
+.coachlist{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.coachlist li{
+  position:relative; padding-left:15px;
+  font-size:12.5px; line-height:1.7; color:var(--fog);
+}
+.coachlist li::before{
+  content:""; position:absolute; left:3px; top:8px;
+  width:5px; height:5px; border-radius:50%; background:var(--sig);
+}
+.coachlist li b{ display:block; color:var(--paper); font-size:12.5px; margin-bottom:2px; }
+.coachlist li em{ display:block; font-style:normal; color:var(--fog-2); margin-top:2px; }
+
 /* 오늘의 연습 */
 .today{
   border:1px solid color-mix(in srgb, var(--paper) 14%, var(--line));
@@ -1590,6 +1669,11 @@ input, textarea{ font:inherit; }
           질문 뽑기
         </button>
       </div>
+      <button class="gate__coach" data-coach="official">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.3 6.3 8.5 8.5"/><path d="M15.5 15.5l2.2 2.2"/><path d="M17.7 6.3 15.5 8.5"/><path d="M8.5 15.5 6.3 17.7"/></svg>
+        AI 코치
+        <span class="gate__coach__s" id="coachHint_official"></span>
+      </button>
     </section>
 
     <section class="gate" style="--sig:var(--green)">
@@ -1621,6 +1705,11 @@ input, textarea{ font:inherit; }
           <span id="btnManageLabel">목록</span>
         </button>
       </div>
+      <button class="gate__coach" data-coach="custom">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.3 6.3 8.5 8.5"/><path d="M15.5 15.5l2.2 2.2"/><path d="M17.7 6.3 15.5 8.5"/><path d="M8.5 15.5 6.3 17.7"/></svg>
+        AI 코치
+        <span class="gate__coach__s" id="coachHint_custom"></span>
+      </button>
     </section>
 
     <section class="gate" style="--sig:var(--blue)">
@@ -1648,6 +1737,11 @@ input, textarea{ font:inherit; }
           질문 뽑기
         </button>
       </div>
+      <button class="gate__coach" data-coach="all">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.3 6.3 8.5 8.5"/><path d="M15.5 15.5l2.2 2.2"/><path d="M17.7 6.3 15.5 8.5"/><path d="M8.5 15.5 6.3 17.7"/></svg>
+        AI 코치
+        <span class="gate__coach__s" id="coachHint_all"></span>
+      </button>
     </section>
 
     <div class="zone" style="margin-top:14px">
@@ -1678,6 +1772,11 @@ input, textarea{ font:inherit; }
           평가 시작
         </button>
       </div>
+      <button class="gate__coach" data-coach="exam">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.3 6.3 8.5 8.5"/><path d="M15.5 15.5l2.2 2.2"/><path d="M17.7 6.3 15.5 8.5"/><path d="M8.5 15.5 6.3 17.7"/></svg>
+        AI 코치
+        <span class="gate__coach__s" id="coachHint_exam"></span>
+      </button>
     </section>
 
   </main>
@@ -2229,6 +2328,30 @@ input, textarea{ font:inherit; }
       <button class="btn btn--ghost" id="ansToRecs" style="width:100%">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
         녹음함에서 다시 듣기
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== 카테고리 코칭 ========== -->
+<div class="sheet" id="sheetCoach" hidden role="dialog" aria-modal="true" aria-label="카테고리 코칭">
+  <div class="sheet__panel" id="coachPanel" style="--sig:var(--amber)">
+    <div class="sheet__grip"></div>
+    <div class="sheet__head">
+      <h2 id="coachTitle">코칭</h2>
+      <button class="iconbtn" data-close="sheetCoach" aria-label="닫기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <div class="coachsum" id="coachSum"></div>
+      <div id="coachBody"></div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--go" id="btnCoachRun" style="width:100%">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.3 6.3 8.5 8.5"/><path d="M15.5 15.5l2.2 2.2"/><path d="M17.7 6.3 15.5 8.5"/><path d="M8.5 15.5 6.3 17.7"/></svg>
+        <span id="btnCoachRunLabel">AI 코칭 받기</span>
       </button>
     </div>
   </div>
@@ -3239,6 +3362,7 @@ input, textarea{ font:inherit; }
     $('statDrawn').textContent = drawn;
     $('statFav').textContent   = favs.length;
     if (typeof renderToday === 'function') renderToday();
+    if (typeof renderCoachHints === 'function') renderCoachHints();
     if ($('noteHint')) $('noteHint').textContent = noteEntries().length + '개';
     $('favHint').textContent   = favs.length + '개';
 
@@ -3596,6 +3720,414 @@ input, textarea{ font:inherit; }
     buzz(12);
     render();
   }
+
+
+  /* =====================================================================
+     카테고리 코칭
+     ---------------------------------------------------------------------
+     한 답변만 보는 첨삭과 달리, 이 카테고리에서 쌓인 기록 전체를 모아
+     "무엇이 계속 약하고, 남은 기간을 어떻게 쓸 것인가"를 묻는다.
+     ===================================================================== */
+  var COACH = {
+    official: { label: '대학 면접 빈출 기출', color: 'var(--amber)' },
+    custom:   { label: '내가 추가한 질문',   color: 'var(--green)' },
+    all:      { label: '전체 통합',          color: 'var(--blue)'  },
+    exam:     { label: '실전 모의평가',      color: 'var(--red)'   }
+  };
+  var AXIS_ORDER = ['content', 'structure', 'detail', 'delivery'];
+
+  /** 이 카테고리에 쌓인 것을 한데 모은다 */
+  function coachData(scope) {
+    var items = pool(scope === 'exam' ? 'all' : scope);
+    var d = {
+      scope: scope, total: items.length, done: 0, fail: 0, todo: 0, saved: 0,
+      tags: {}, scored: [], axes: { content: 0, structure: 0, detail: 0, delivery: 0 }, axesN: 0
+    };
+
+    items.forEach(function (it) {
+      var st = getStatus(it.q);
+      if (st === ST.DONE) d.done++; else if (st === ST.FAIL) d.fail++; else d.todo++;
+      if (myAnswerFor(it.q)) d.saved++;
+
+      var t = d.tags[it.t] || (d.tags[it.t] = { tag: it.t, total: 0, done: 0, fail: 0, sum: 0, n: 0 });
+      t.total++;
+      if (st === ST.DONE) t.done++; else if (st === ST.FAIL) t.fail++;
+
+      var h = aiHistOf(it.q);
+      if (h.length) {
+        var last = h[h.length - 1];
+        t.sum += last.score; t.n++;
+        d.scored.push({ at: last.at, score: last.score });
+        if (last.axes) {
+          d.axesN++;
+          AXIS_ORDER.forEach(function (k) { d.axes[k] += last.axes[k] || 0; });
+        }
+      }
+    });
+
+    if (d.axesN) AXIS_ORDER.forEach(function (k) { d.axes[k] = Math.round(d.axes[k] / d.axesN); });
+    d.scored.sort(function (a, b) { return a.at - b.at; });
+    d.avg = d.scored.length
+      ? Math.round(d.scored.reduce(function (x, y) { return x + y.score; }, 0) / d.scored.length)
+      : null;
+
+    // 최근 절반과 앞 절반을 견줘 추세를 낸다
+    d.trend = null;
+    if (d.scored.length >= 4) {
+      var half = Math.floor(d.scored.length / 2);
+      var m = function (a) { return a.reduce(function (x, y) { return x + y.score; }, 0) / a.length; };
+      d.trend = Math.round(m(d.scored.slice(-half)) - m(d.scored.slice(0, half)));
+    }
+
+    d.tagList = Object.keys(d.tags).map(function (k) {
+      var t = d.tags[k];
+      t.avg = t.n ? Math.round(t.sum / t.n) : null;
+      // 점수가 없으면 못했음 비율로 대신 세운다
+      t.rank = t.avg !== null ? t.avg : (t.total ? 100 - Math.round(t.fail / t.total * 100) - 20 : 60);
+      return t;
+    }).sort(function (a, b) { return a.rank - b.rank; });
+
+    d.weak = items.slice()
+      .sort(function (a, b) { return weakness(a.q) - weakness(b.q); })
+      .slice(0, 8)
+      .map(function (it) {
+        var h = aiHistOf(it.q);
+        return { q: it.q, t: it.t, score: h.length ? h[h.length - 1].score : null, st: getStatus(it.q) };
+      });
+
+    if (scope === 'exam') {
+      d.exams = exams.slice(-8).map(function (e) {
+        return { date: e.date, score: e.score, count: e.count, axes: e.axes };
+      });
+      d.examAvg = exams.length
+        ? Math.round(exams.reduce(function (x, e) { return x + (e.score || 0); }, 0) / exams.length)
+        : null;
+      d.examBest = exams.length ? Math.max.apply(null, exams.map(function (e) { return e.score || 0; })) : null;
+    }
+    return d;
+  }
+
+  /** 카드에 붙는 한 줄 (토큰이 없어도 보인다) */
+  function coachHintText(scope) {
+    var d = coachData(scope);
+    if (scope === 'exam') {
+      if (!exams.length) return '아직 평가 기록 없음';
+      return exams.length + '회 · 평균 ' + d.examAvg + '점';
+    }
+    if (!d.total) return '질문 없음';
+    var bits = [d.done + '/' + d.total];
+    if (d.avg !== null) bits.push('평균 ' + d.avg + '점');
+    var weakTag = d.tagList.filter(function (t) { return t.n || t.fail; })[0];
+    if (weakTag) bits.push(weakTag.tag + ' 약함');
+    return bits.join(' · ');
+  }
+
+  function renderCoachHints() {
+    Object.keys(COACH).forEach(function (scope) {
+      var el = $('coachHint_' + scope);
+      if (el) el.textContent = coachHintText(scope);
+    });
+  }
+
+  /** 오류가 아니라 안내일 때 쓰는 상자 */
+  function coachNoteEl(title, msg) {
+    var box = aiEl('div', 'aicard');
+    box.appendChild(aiEl('div', 'aicard__sec', title));
+    box.appendChild(aiEl('div', 'aicard__rw', msg));
+    return box;
+  }
+
+  /** 사람이 읽는 요약 줄 — AI 없이도 늘 보여 준다 */
+  function renderCoachSum(d) {
+    var box = $('coachSum');
+    box.innerHTML = '';
+    var chip = function (label, val, cls) {
+      var e = document.createElement('span');
+      if (cls) e.className = cls;
+      e.textContent = label + ' ';
+      var b = document.createElement('b');
+      b.textContent = val;
+      e.appendChild(b);
+      box.appendChild(e);
+    };
+
+    if (d.scope === 'exam') {
+      chip('평가', exams.length + '회');
+      if (d.examAvg !== null) chip('평균', d.examAvg + '점');
+      if (d.examBest !== null) chip('최고', d.examBest + '점', 'is-good');
+    } else {
+      chip('진행', d.done + ' / ' + d.total);
+      if (d.fail) chip('못했음', String(d.fail), 'is-bad');
+      if (d.avg !== null) chip('평균', d.avg + '점');
+      if (d.saved) chip('적어 둔 답변', d.saved + '개', 'is-good');
+    }
+    if (d.trend !== null) {
+      chip('추세', (d.trend > 0 ? '+' : '') + d.trend, d.trend >= 0 ? 'is-good' : 'is-bad');
+    }
+    if (d.axesN) {
+      var weakAxis = AXIS_ORDER.slice().sort(function (a, b) { return d.axes[a] - d.axes[b]; })[0];
+      chip('약한 축', AXIS_KO[weakAxis] + ' ' + d.axes[weakAxis]);
+    }
+  }
+
+  /** 코칭 프롬프트 — 근거를 다 실어 보낸다 */
+  function coachPrompt(d) {
+    var L = [];
+    L.push('[코칭 대상] ' + COACH[d.scope].label + (d.scope === 'exam' ? '' : ' · 전체 ' + d.total + '문항'));
+
+    if (d.scope === 'exam') {
+      L.push('[모의평가 기록] ' + exams.length + '회' +
+        (d.examAvg !== null ? ' · 평균 ' + d.examAvg + '점 · 최고 ' + d.examBest + '점' : ''));
+      (d.exams || []).forEach(function (e) {
+        L.push('  - ' + e.date + ' ' + e.score + '점 (' + e.count + '문항)' +
+          (e.axes ? ' 톤 ' + e.axes.tone + ' 강세 ' + e.axes.volume + ' 어조 ' + e.axes.pace + ' 흐름 ' + e.axes.flow : ''));
+      });
+      L.push('※ 위 점수는 목소리 지표(톤·강세·어조·흐름) 기반이다. 100점 만점.');
+    } else {
+      L.push('[진행] 답변함 ' + d.done + ' · 못했음 ' + d.fail + ' · 아직 ' + d.todo +
+             ' · 내 답변 적어 둔 것 ' + d.saved);
+    }
+
+    if (d.avg !== null) {
+      L.push('[AI 첨삭 평균] ' + d.avg + '점 (' + d.scored.length + '개 문항)' +
+             (d.trend !== null ? ' · 최근 추세 ' + (d.trend > 0 ? '+' : '') + d.trend : ''));
+    }
+    if (d.axesN) {
+      L.push('[축 평균] ' + AXIS_ORDER.map(function (k) { return AXIS_KO[k] + ' ' + d.axes[k]; }).join(' · ') +
+             ' (100점 만점)');
+    }
+
+    var tags = d.tagList.filter(function (t) { return t.total; }).slice(0, 8);
+    if (tags.length && d.scope !== 'exam') {
+      L.push('[주제별 · 약한 순]');
+      tags.forEach(function (t) {
+        L.push('  - ' + t.tag + ': ' + t.total + '문항 중 답변 ' + t.done + ' · 못했음 ' + t.fail +
+               (t.avg !== null ? ' · 평균 ' + t.avg + '점' : ' · 첨삭 없음'));
+      });
+    }
+
+    if (d.weak.length) {
+      L.push('[지금 가장 약한 질문]');
+      d.weak.forEach(function (w) {
+        var why = w.st === 'fail' ? '못했음' : (w.score !== null ? w.score + '점' : '아직 안 함');
+        L.push('  - (' + why + ') ' + w.q);
+      });
+    }
+
+    L.push('');
+    L.push('이 지원자는 앞으로 약 2개월 뒤 면접을 봅니다.');
+    L.push('위 기록만 근거로, 이 카테고리에 대한 코칭을 아래 JSON 형식 그대로 주세요. 값은 모두 한국어.');
+    L.push('{');
+    L.push('  "headline": "지금 상태를 한 문장으로. 숫자를 하나 인용할 것",');
+    L.push('  "state": "지금 어디에 서 있는지 2~3문장. 좋게 포장하지 말고 사실대로",');
+    L.push('  "strengths": ["기록이 실제로 보여 주는 강점 1~2개"],');
+    L.push('  "gaps": [{"area":"약한 주제나 축 이름", "why":"어떤 수치가 그렇게 말하는가", "fix":"무엇을 어떻게 연습할지"}],');
+    L.push('  "plan": [{"when":"이번 주", "what":"할 일 한 줄", "how":"구체적인 방법"}],');
+    L.push('  "focus": ["지금 당장 다시 볼 질문 3개 — 위 [지금 가장 약한 질문] 목록의 문장을 한 글자도 바꾸지 말고 그대로 옮길 것"],');
+    L.push('  "checklist": ["면접 전날 확인할 것 3개"]');
+    L.push('}');
+    L.push('');
+    L.push('gaps 는 1~3개. plan 은 3단계로 "이번 주 / 2~3주차 / 면접 2주 전" 처럼 시기를 나눌 것.');
+    L.push('기록이 적으면 적은 대로 말하고, 없는 것을 있는 것처럼 지어내지 마라.');
+    return L.join('\n');
+  }
+
+  function coachSig(d) {
+    return aiHash([hfModel, d.scope, d.total, d.done, d.fail, d.saved,
+                   d.avg, d.scored.length, d.axesN,
+                   d.scope === 'exam' ? exams.length : 0].join('|'));
+  }
+
+  function aiCoachCategory(d, fresh) {
+    var sig = 'c|' + coachSig(d);
+    var cached = aiCacheGet(sig);
+    if (cached && !fresh) return Promise.resolve(cached);
+
+    return aiJSON(AI_SYS, coachPrompt(d), { max: 2000, temp: 0.5 }).then(function (j) {
+      var arr = function (a, n) { return (a || []).map(String).filter(Boolean).slice(0, n); };
+      var out = {
+        headline: String(j.headline || '').trim(),
+        state: String(j.state || '').trim(),
+        strengths: arr(j.strengths, 3),
+        gaps: (j.gaps || []).map(function (g) {
+          if (typeof g === 'string') return { area: g, why: '', fix: '' };
+          return { area: String(g.area || ''), why: String(g.why || ''), fix: String(g.fix || '') };
+        }).filter(function (g) { return g.area; }).slice(0, 3),
+        plan: (j.plan || []).map(function (x) {
+          if (typeof x === 'string') return { when: '', what: x, how: '' };
+          return { when: String(x.when || ''), what: String(x.what || ''), how: String(x.how || '') };
+        }).filter(function (x) { return x.what; }).slice(0, 4),
+        focus: arr(j.focus, 4),
+        checklist: arr(j.checklist, 4),
+        model: aiModelLabel(),
+        at: Date.now()
+      };
+      if (!out.headline && !out.state) throw new Error('코칭 결과가 비어 있습니다.');
+      aiCacheSet(sig, out);
+      return out;
+    });
+  }
+
+  /* ---------- 코칭 시트 ---------- */
+  var coachScope = 'official';
+
+  function renderCoachResult(res) {
+    var box = $('coachBody');
+    box.innerHTML = '';
+
+    if (res.headline) box.appendChild(aiEl('h3', 'coachhead', res.headline));
+    if (res.state) box.appendChild(aiEl('p', 'coachstate', res.state));
+
+    var sec = function (title, build) {
+      var h = aiEl('h3', 'subhead', title);
+      box.appendChild(h);
+      build();
+    };
+
+    if (res.strengths.length) {
+      sec('지금 잘하고 있는 것', function () {
+        var ul = document.createElement('ul');
+        ul.className = 'coachlist';
+        res.strengths.forEach(function (t) { ul.appendChild(aiEl('li', null, t)); });
+        box.appendChild(ul);
+      });
+    }
+
+    if (res.gaps.length) {
+      sec('메워야 할 곳', function () {
+        var ul = document.createElement('ul');
+        ul.className = 'coachlist';
+        res.gaps.forEach(function (g) {
+          var li = aiEl('li');
+          li.appendChild(aiEl('b', null, g.area));
+          if (g.why) li.appendChild(document.createTextNode(g.why));
+          if (g.fix) li.appendChild(aiEl('em', null, '→ ' + g.fix));
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      });
+    }
+
+    if (res.plan.length) {
+      sec('연습 계획', function () {
+        var ul = document.createElement('ul');
+        ul.className = 'coachplan';
+        res.plan.forEach(function (x) {
+          var li = document.createElement('li');
+          li.appendChild(aiEl('b', null, (x.when ? x.when + ' — ' : '') + x.what));
+          if (x.how) li.appendChild(aiEl('span', null, x.how));
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      });
+    }
+
+    if (res.focus.length) {
+      // 문장이 실제 질문과 맞으면 눌러서 바로 연습할 수 있게 한다
+      var all = pool('all');
+      var byQ = {};
+      all.forEach(function (it) { byQ[it.q] = it; });
+      sec('지금 다시 볼 질문', function () {
+        var ul = document.createElement('ul');
+        ul.className = 'coachq';
+        res.focus.forEach(function (q) {
+          var li = document.createElement('li');
+          var b = document.createElement('button');
+          b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>';
+          b.appendChild(aiEl('span', null, q));
+          var item = byQ[q] || { q: q, t: '지정' };
+          b.addEventListener('click', function () {
+            closeSheet('sheetCoach');
+            askOne(item, COACH[coachScope].label, COACH[coachScope].color);
+          });
+          li.appendChild(b);
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      });
+    }
+
+    if (res.checklist.length) {
+      sec('면접 전날 확인할 것', function () {
+        var ul = document.createElement('ul');
+        ul.className = 'coachlist';
+        res.checklist.forEach(function (t) { ul.appendChild(aiEl('li', null, t)); });
+        box.appendChild(ul);
+      });
+    }
+
+    var tag = aiEl('div', 'aimodel', 'AI · ' + (res.model || aiModelLabel()));
+    tag.style.marginTop = '14px';
+    box.appendChild(tag);
+  }
+
+  function runCoach(fresh) {
+    var d = coachData(coachScope);
+    var box = $('coachBody');
+
+    $('btnCoachRun').disabled = false;
+    if (!aiOn()) {
+      $('btnCoachRun').disabled = true;
+      box.innerHTML = '';
+      box.appendChild(coachNoteEl('AI 코칭을 켜면',
+        '설정의 「AI 첨삭」에 허깅페이스 토큰을 넣으면, 위 기록을 읽고 이 카테고리에 맞는 계획을 짜 줍니다.'));
+      return;
+    }
+    if (coachScope !== 'exam' && !d.total) {
+      $('btnCoachRun').disabled = true;
+      box.innerHTML = '';
+      box.appendChild(coachNoteEl('아직 코칭할 것이 없습니다',
+        '이 카테고리에 질문이 없습니다. 먼저 질문을 추가해 주세요.'));
+      return;
+    }
+    if (coachScope === 'exam' && !exams.length) {
+      $('btnCoachRun').disabled = true;
+      box.innerHTML = '';
+      box.appendChild(coachNoteEl('아직 코칭할 것이 없습니다',
+        '실전 모의평가를 한 번 치르고 나면, 그 기록을 읽고 코칭할 수 있습니다.'));
+      return;
+    }
+
+    box.innerHTML = '';
+    box.appendChild(aiLoadEl('AI가 이 카테고리의 기록을 읽고 있습니다…'));
+    $('btnCoachRun').disabled = true;
+
+    aiCoachCategory(d, fresh).then(function (res) {
+      box.innerHTML = '';
+      renderCoachResult(res);
+      $('btnCoachRunLabel').textContent = '다시 코칭 받기';
+    }).catch(function (e) {
+      box.innerHTML = '';
+      box.appendChild(aiErrEl(e.message || String(e), function () { runCoach(true); }));
+    }).then(function () {
+      $('btnCoachRun').disabled = false;
+    });
+  }
+
+  function openCoach(scope) {
+    coachScope = scope;
+    var d = coachData(scope);
+    $('coachPanel').style.setProperty('--sig', COACH[scope].color);
+    $('coachTitle').textContent = COACH[scope].label + ' 코칭';
+    renderCoachSum(d);
+    $('coachBody').innerHTML = '';
+    $('btnCoachRunLabel').textContent = 'AI 코칭 받기';
+    openSheet('sheetCoach');
+
+    // 이미 받아 둔 것이 있으면 곧바로 보여 준다 (크레딧을 다시 쓰지 않는다)
+    if (aiOn()) {
+      var cached = aiCacheGet('c|' + coachSig(d));
+      if (cached) { renderCoachResult(cached); $('btnCoachRunLabel').textContent = '다시 코칭 받기'; }
+      else runCoach(false);
+    } else {
+      runCoach(false);
+    }
+  }
+
+  document.querySelectorAll('[data-coach]').forEach(function (b) {
+    b.addEventListener('click', function () { openCoach(b.dataset.coach); buzz(10); });
+  });
+  $('btnCoachRun').addEventListener('click', function () { runCoach(true); buzz(12); });
 
   /* ---------- 답변 노트 ---------- */
   /** 내 답변이 있는 모든 질문. 내 질문 목록의 것과 기출 저장소의 것을 합친다. */
@@ -8378,6 +8910,8 @@ input, textarea{ font:inherit; }
     showAnswerReport: showAnswerReport,
     peek: function () { return { q: current && current.q, a: current && current.a, my: current ? myAnswerFor(current.q) : null }; },
     setCurrent: function (item) { current = item; },
+    list: function (mode) { return pool(mode || 'all').map(function (i) { return { q: i.q, t: i.t }; }); },
+    coachData: function (scope) { return coachData(scope); },
     timerLeft: function () { return timerEnd - Date.now(); },
     cloudTranscribe: cloudTranscribe,
     wavFromPcm: wavFromPcm,
