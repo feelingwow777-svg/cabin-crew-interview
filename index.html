@@ -138,14 +138,39 @@ input, textarea{ font:inherit; }
 /* ---------- 게이트 카드 ---------- */
 .gates{ display:flex; flex-direction:column; gap:13px; }
 
+/* 구역 머리말 — 연습 / 평가 */
+.zone{
+  display:flex; align-items:baseline; gap:10px;
+  margin:6px 0 -3px; padding:0 2px;
+}
+.zone__k{
+  font-family:var(--t-mono); font-size:10px; font-weight:700;
+  letter-spacing:.24em; text-transform:uppercase; color:var(--fog-2);
+}
+.zone__t{ font-size:15px; font-weight:800; letter-spacing:-.02em; color:var(--paper); }
+.zone__line{ flex:1 1 auto; height:1px; background:var(--line); align-self:center; }
+
+/* 카드 머리: 번호 타일 + 한글 이름표. 색만으로는 구분이 안 된다 */
+.gate__id{ display:flex; align-items:center; gap:10px; min-width:0; }
+.gate__num{
+  flex:none; width:36px; height:36px; border-radius:11px;
+  display:grid; place-items:center;
+  font-family:var(--t-mono); font-size:14px; font-weight:800; letter-spacing:-.02em;
+  color:#0A0D14; background:var(--sig);
+  box-shadow:0 6px 18px -6px color-mix(in srgb, var(--sig) 70%, transparent);
+}
+.gate__kick{ font-size:12px; font-weight:800; letter-spacing:.02em; color:var(--sig); }
+
 .gate{
   position:relative; overflow:hidden;
-  border:1px solid var(--line);
+  border:1px solid color-mix(in srgb, var(--sig) 22%, var(--line));
+  border-top:2px solid var(--sig);
   border-radius:var(--r-lg);
+  /* 카드마다 제 색을 옅게 깔아 멀리서도 넷이 다르게 보이게 */
   background:
-    linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 46%),
+    linear-gradient(180deg, color-mix(in srgb, var(--sig) 11%, transparent), rgba(255,255,255,0) 58%),
     var(--ink-1);
-  padding:18px 18px 17px;
+  padding:16px 18px 17px;
   display:flex; flex-direction:column; gap:13px;
 }
 /* 좌측 시그널 라이트 */
@@ -234,8 +259,39 @@ input, textarea{ font:inherit; }
 .prefs{
   border-top:1px solid var(--line);
   padding-top:18px;
-  display:flex; flex-direction:column; gap:14px;
+  display:flex; flex-direction:column; gap:12px;
 }
+
+/* 바로가기 — 자주 여는 것은 접지 않고 타일로 */
+.quick{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.quick .linkrow{
+  min-height:54px; padding:10px 13px; border-radius:var(--r-md);
+  border:1px solid var(--line); background:var(--ink-1);
+  flex-direction:column; align-items:flex-start; justify-content:center; gap:3px;
+  font-size:13.5px; font-weight:700;
+}
+.quick .linkrow .muted{ font-size:11.5px; font-weight:600; }
+
+/* 접는 설정 묶음 */
+.fold{ border:1px solid var(--line); border-radius:var(--r-md); background:var(--ink-1); }
+.fold > summary{
+  list-style:none; cursor:pointer;
+  display:flex; align-items:center; gap:10px;
+  min-height:52px; padding:0 14px;
+}
+.fold > summary::-webkit-details-marker{ display:none; }
+.fold__t{ font-size:14px; font-weight:800; flex:none; }
+.fold__s{
+  flex:1 1 auto; min-width:0;
+  font-family:var(--t-mono); font-size:11px; letter-spacing:.02em;
+  color:var(--fog-2); text-align:right;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.fold__s.is-on{ color:var(--green); }
+.fold__chev{ flex:none; width:18px; height:18px; color:var(--fog-2); transition:transform .18s ease; }
+.fold[open] > summary .fold__chev{ transform:rotate(180deg); }
+.fold[open] > summary{ border-bottom:1px solid var(--line); }
+.fold__body{ padding:14px 14px 12px; display:flex; flex-direction:column; gap:14px; }
 .prefs__row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .prefs__label{ font-size:12.5px; color:var(--fog); }
 
@@ -690,11 +746,7 @@ input, textarea{ font:inherit; }
 /* ============================================================
    실전 모의평가
    ============================================================ */
-.gate--exam{
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--red) 9%, transparent), rgba(255,255,255,0) 55%),
-    var(--ink-1);
-}
+.gate--exam{ border-top-width:3px; }
 
 .expane{
   position:relative; z-index:2;
@@ -1436,10 +1488,18 @@ input, textarea{ font:inherit; }
   </header>
 
   <main class="gates">
+    <div class="zone">
+      <span class="zone__k">Practice</span>
+      <span class="zone__t">연습하기</span>
+      <span class="zone__line"></span>
+    </div>
 
     <section class="gate" style="--sig:var(--amber)">
       <div class="gate__head">
-        <span class="gate__idx">Category 01</span>
+        <span class="gate__id">
+          <span class="gate__num">01</span>
+          <span class="gate__kick">기출</span>
+        </span>
         <span class="gate__count" id="cntOfficial">—</span>
       </div>
       <div>
@@ -1463,7 +1523,10 @@ input, textarea{ font:inherit; }
 
     <section class="gate" style="--sig:var(--green)">
       <div class="gate__head">
-        <span class="gate__idx">Category 02</span>
+        <span class="gate__id">
+          <span class="gate__num">02</span>
+          <span class="gate__kick">내 질문</span>
+        </span>
         <span class="gate__count" id="cntCustom">—</span>
       </div>
       <div>
@@ -1491,7 +1554,10 @@ input, textarea{ font:inherit; }
 
     <section class="gate" style="--sig:var(--blue)">
       <div class="gate__head">
-        <span class="gate__idx">Category 03</span>
+        <span class="gate__id">
+          <span class="gate__num">03</span>
+          <span class="gate__kick">통합</span>
+        </span>
         <span class="gate__count" id="cntAll">—</span>
       </div>
       <div>
@@ -1513,9 +1579,18 @@ input, textarea{ font:inherit; }
       </div>
     </section>
 
+    <div class="zone" style="margin-top:14px">
+      <span class="zone__k">Evaluate</span>
+      <span class="zone__t">평가받기</span>
+      <span class="zone__line"></span>
+    </div>
+
     <section class="gate gate--exam" style="--sig:var(--red)">
       <div class="gate__head">
-        <span class="gate__idx">Category 04</span>
+        <span class="gate__id">
+          <span class="gate__num">04</span>
+          <span class="gate__kick">실전</span>
+        </span>
         <span class="gate__count" id="cntExam">—</span>
       </div>
       <div>
@@ -1537,6 +1612,36 @@ input, textarea{ font:inherit; }
   </main>
 
   <div class="prefs">
+    <div class="quick">
+    <button class="linkrow" id="btnMyQ">
+      내가 추가한 질문
+      <span class="muted" id="myQHint">0개</span>
+    </button>
+    <button class="linkrow" id="btnStats">
+      통계 보기
+      <span class="muted" id="statHint">0%</span>
+    </button>
+    <button class="linkrow" id="btnLog">
+      답변 기록 보기
+      <span class="muted" id="logHint">0 / 0</span>
+    </button>
+    <button class="linkrow" id="btnRecs">
+      녹음함
+      <span class="muted" id="recHint">0개</span>
+    </button>
+    <button class="linkrow" id="btnFav">
+      저장한 질문 보기
+      <span class="muted" id="favHint">0개</span>
+    </button>
+    </div>
+
+    <details class="fold" id="foldDraw">
+      <summary>
+        <span class="fold__t">출제 설정</span>
+        <span class="fold__s" id="foldDrawS"></span>
+        <svg class="fold__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="fold__body">
     <div class="dialbox">
       <div class="prefs__row">
         <span class="prefs__label">답변 시간</span>
@@ -1574,7 +1679,6 @@ input, textarea{ font:inherit; }
         <button class="switch" id="swCutoff" aria-pressed="false" aria-label="시간이 끝나면 녹음 자동 종료"></button>
       </div>
     </div>
-
     <div class="prefs__row prefs__row--stack">
       <span class="prefs__col">
         <span class="prefs__label" style="color:var(--paper);font-size:14px">아직 답변 안 한 것만 뽑기</span>
@@ -1582,7 +1686,6 @@ input, textarea{ font:inherit; }
       </span>
       <button class="switch" id="swUnanswered" aria-pressed="false" aria-label="아직 답변 안 한 질문만 뽑기"></button>
     </div>
-
     <div class="prefs__row prefs__row--stack">
       <span class="prefs__col">
         <span class="prefs__label" style="color:var(--paper);font-size:14px">약한 질문 먼저 뽑기</span>
@@ -1590,22 +1693,15 @@ input, textarea{ font:inherit; }
       </span>
       <button class="switch" id="swWeak" aria-pressed="false" aria-label="약한 질문 먼저 뽑기"></button>
     </div>
-
-    <button class="linkrow" id="btnMyQ">
-      내가 추가한 질문
-      <span class="muted" id="myQHint">0개</span>
-    </button>
-
-    <button class="linkrow" id="btnStats">
-      통계 보기
-      <span class="muted" id="statHint">0%</span>
-    </button>
-
-    <button class="linkrow" id="btnLog">
-      답변 기록 보기
-      <span class="muted" id="logHint">0 / 0</span>
-    </button>
-
+      </div>
+    </details>
+    <details class="fold" id="foldAi">
+      <summary>
+        <span class="fold__t">AI 첨삭</span>
+        <span class="fold__s" id="foldAiS"></span>
+        <svg class="fold__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="fold__body">
     <div class="exsrc" id="aiBox">
       <span class="exrow__label">AI 첨삭 <span class="aistate" id="aiState">꺼짐</span></span>
       <p class="prefs__note">
@@ -1657,7 +1753,15 @@ input, textarea{ font:inherit; }
         </p>
       </details>
     </div>
-
+      </div>
+    </details>
+    <details class="fold" id="foldAnalysis">
+      <summary>
+        <span class="fold__t">답변 분석 · 받아쓰기</span>
+        <span class="fold__s" id="foldAnalysisS"></span>
+        <svg class="fold__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="fold__body">
     <div class="exsrc" id="anModeBox">
       <span class="exrow__label">답변 분석</span>
       <p class="prefs__note" id="anModeNote"></p>
@@ -1704,27 +1808,25 @@ input, textarea{ font:inherit; }
         </div>
       </div>
     </div>
-
-    <button class="linkrow" id="btnRecs">
-      녹음함
-      <span class="muted" id="recHint">0개</span>
-    </button>
-
-    <button class="linkrow" id="btnFav">
-      저장한 질문 보기
-      <span class="muted" id="favHint">0개</span>
-    </button>
-
+      </div>
+    </details>
+    <details class="fold" id="foldEtc">
+      <summary>
+        <span class="fold__t">공유 · 초기화</span>
+        <span class="fold__s" id="foldEtcS"></span>
+        <svg class="fold__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="fold__body">
     <button class="linkrow" id="btnShare">
       QR로 친구에게 공유
       <span class="muted">SHARE</span>
     </button>
-
     <button class="linkrow" id="btnReset">
       뽑기 기록 초기화
       <span class="muted">RESET</span>
     </button>
-
+      </div>
+    </details>
     <p class="credit">질문은 국내 대학 항공서비스·승무원학과 면접에서 반복적으로 등장한 유형을 정리한 것입니다. 답변 체크·추가한 질문·저장함은 모두 이 브라우저에만 보관되며, 다른 사람에게 보이지 않습니다.</p>
   </div>
 
@@ -2732,6 +2834,7 @@ input, textarea{ font:inherit; }
     aihist:   'ccq.aihist.v1',     // 질문별 점수 이력
     myans:    'ccq.myans.v1',      // 기출 질문에 적어 둔 내 답변
     weak:     'ccq.weak.v1',       // 약한 질문 먼저 뽑기
+    fold:     'ccq.fold.v1',       // 어떤 설정 묶음을 펼쳐 뒀는지
     cutoff:   'ccq.cutoff.v1'      // 시간이 다 되면 녹음을 끊는다
   };
 
@@ -3066,6 +3169,7 @@ input, textarea{ font:inherit; }
     $('swUnanswered').setAttribute('aria-pressed', String(onlyTodo));
     $('swWeak').setAttribute('aria-pressed', String(weakFirst));
     $('swCutoff').setAttribute('aria-pressed', String(cutoff));
+    if (typeof renderFoldStatus === 'function') renderFoldStatus();
 
     document.querySelectorAll('#chipsTime .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(Number(c.dataset.sec) === sec));
@@ -7719,6 +7823,7 @@ input, textarea{ font:inherit; }
 
   function renderAiBox() {
     if ($('sttMode')) renderSttMode();
+    if (typeof renderFoldStatus === 'function') renderFoldStatus();
     var st = $('aiState');
     if (aiOn()) { st.textContent = '켜짐'; st.className = 'aistate is-on'; }
     else { st.textContent = '꺼짐'; st.className = 'aistate'; }
@@ -7981,12 +8086,48 @@ input, textarea{ font:inherit; }
     if (!stage.hidden)            { closeStage(); }
   });
 
+  /* ---------- 설정 묶음 접기/펴기 ---------- */
+  var foldState = load(K.fold, null) || {};
+  ['foldDraw', 'foldAi', 'foldAnalysis', 'foldEtc'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.open = foldState[id] === true;
+    el.addEventListener('toggle', function () {
+      foldState[id] = el.open;
+      save(K.fold, foldState);
+    });
+  });
+
+  /** 접힌 채로도 지금 설정이 무엇인지 한 줄로 보이게 한다 */
+  function renderFoldStatus() {
+    var d = $('foldDrawS');
+    if (d) {
+      var bits = [fmtClock(sec)];
+      if (cutoff) bits.push('끊기');
+      if (onlyTodo) bits.push('미답변만');
+      if (weakFirst) bits.push('약한 것 먼저');
+      d.textContent = bits.join(' · ');
+    }
+    var a = $('foldAiS');
+    if (a) {
+      a.textContent = aiOn() ? ('켜짐 · ' + aiModelLabel()) : '꺼짐';
+      a.classList.toggle('is-on', aiOn());
+    }
+    var n = $('foldAnalysisS');
+    if (n) {
+      n.textContent = !canRecord ? '녹음 불가'
+        : (cloudSttOn() ? '클라우드'
+          : ('폰에서' + (whisperReady() ? ' · 모델 준비됨' : ' · 모델 없음')));
+    }
+  }
+
   /* ---------- 시작 ---------- */
   $('qrUrl').textContent = APP_URL;
   // 녹음이 안 되는 환경에서도 버튼은 살려 둔다. 누르면 이유와 해결법을 보여 준다.
   // 녹음이 아예 안 되는 환경이면 분석 방식 선택은 의미가 없다
   if (!canRecord) {
     $('anModeBox').hidden = true;
+    $('foldAnalysis').hidden = true;
     $('recNote').innerHTML = frameBlocksMic
       ? '이 화면은 <strong>마이크를 쓸 수 없는 형태</strong>로 실행 중이라 녹음이 되지 않습니다. 폰 설정 문제가 아닙니다 — 아래 「마이크 권한」에서 자세한 이유를 확인하세요.'
       : '이 브라우저에서는 <strong>녹음을 쓸 수 없습니다.</strong> 아래 「마이크 권한」에서 이유를 확인하세요.';
