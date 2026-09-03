@@ -860,6 +860,34 @@ input, textarea{ font:inherit; }
 @keyframes aispin{ to{ transform:rotate(360deg); } }
 .aimodel{ font-family:var(--t-mono); font-size:10.5px; color:var(--fog-2); margin-left:auto; }
 
+.aicard__delta{
+  flex:none; font-family:var(--t-mono); font-size:11.5px; font-weight:700;
+  padding:3px 8px; border-radius:99px; align-self:center;
+  border:1px solid var(--line-2); color:var(--fog-2);
+}
+.aicard__delta.is-up{
+  color:var(--green); border-color:color-mix(in srgb, var(--green) 45%, transparent);
+}
+.aicard__delta.is-down{
+  color:var(--amber); border-color:color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.aiaxes{
+  display:grid; grid-template-columns:1fr 1fr; gap:9px 14px;
+  margin-top:12px; padding-top:12px; border-top:1px solid var(--line);
+}
+.aiax{ display:flex; flex-direction:column; gap:4px; }
+.aiax__top{
+  display:flex; align-items:baseline; justify-content:space-between; gap:6px;
+  font-size:11.5px; color:var(--fog);
+}
+.aiax__top b{ font-family:var(--t-mono); font-size:12.5px; color:var(--paper); font-weight:700; }
+.aiax__track{ height:5px; border-radius:99px; background:rgba(255,255,255,.09); overflow:hidden; }
+.aiax__bar{ height:100%; width:0; border-radius:99px; background:var(--green); transition:width .5s cubic-bezier(.2,.8,.25,1); }
+.aiax__bar.is-mid{ background:var(--amber); }
+.aiax__bar.is-low{ background:var(--red); }
+.aicard li.ask{ color:var(--paper); }
+.aicard li.ask::before{ content:"Q"; font-family:var(--t-mono); font-size:10px; color:var(--amber); }
+
 /* ---------- 녹음 직후 분석 결과 ---------- */
 .ansq{
   margin:0 0 10px;
@@ -2655,7 +2683,8 @@ input, textarea{ font:inherit; }
     aicache:  'ccq.aicache.v1',
     aistat:   'ccq.aistat.v1',
     sttmode:  'ccq.sttmode.v1',    // 'local' | 'cloud'
-    aibudget: 'ccq.aibudget.v1'    // 쓸 수 있는 크레딧 (달러)
+    aibudget: 'ccq.aibudget.v1',   // 쓸 수 있는 크레딧 (달러)
+    aihist:   'ccq.aihist.v1'      // 질문별 점수 이력
   };
 
   function load(key, fallback) {
@@ -6061,8 +6090,10 @@ input, textarea{ font:inherit; }
   var STT_USD_PER_SEC = 0.00000333;   // 공급자 단가, 어림값
   var STT_MAX_SEC = 600;
 
-  var sttMode = load(K.sttmode, 'local');
-  if (sttMode !== 'cloud') sttMode = 'local';
+  // 고른 적이 없으면 null 로 둔다. 토큰을 읽은 뒤에 기본값을 정한다
+  // (여기서는 아직 hfKey 가 채워지기 전이라 aiOn() 을 쓸 수 없다).
+  var sttMode = load(K.sttmode, null);
+  if (sttMode !== 'cloud' && sttMode !== 'local') sttMode = null;
 
   function cloudSttOn() { return sttMode === 'cloud' && aiOn(); }
 
@@ -6295,15 +6326,19 @@ input, textarea{ font:inherit; }
     { id: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
       label: '기본',
       price: { i: 0.09, o: 0.55 },
-      note: '가장 크고 한국어가 좋습니다. 값도 싼 편이라 기본으로 둡니다. 8~20초.' },
-    { id: 'google/gemma-4-31B-it',
+      note: '크고 한국어가 좋으면서 값도 쌉니다. 평소에는 이걸로 충분합니다. 8~20초.' },
+    { id: 'Qwen/Qwen3.5-397B-A17B',
+      label: '최고',
+      price: { i: 0.45, o: 3.00 },
+      note: '가장 큰 모델. 첨삭이 눈에 띄게 날카로워지지만 값이 6배이고 15~30초 걸립니다.' },
+    { id: 'deepseek-ai/DeepSeek-V4-Flash',
       label: '절약',
+      price: { i: 0.09, o: 0.18 },
+      note: '가장 저렴하고 빠릅니다. 여러 번 연습할 때 쓰세요. 3~8초.' },
+    { id: 'google/gemma-4-31B-it',
+      label: '대안',
       price: { i: 0.13, o: 0.38 },
-      note: '가장 저렴하고 빠릅니다. 첨삭이 조금 단순해질 수 있습니다. 3~8초.' },
-    { id: 'Qwen/Qwen3-Next-80B-A3B-Instruct',
-      label: '빠름',
-      price: { i: 0.09, o: 1.10 },
-      note: '응답이 가장 빠르지만 출력 단가가 두 배여서 크레딧이 빨리 줄어듭니다.' }
+      note: '위 모델들이 혼잡하거나 오류가 날 때 씁니다.' }
   ];
 
   var HF_FREE_USD = 0.10;   // 무료 계정에 매달 들어오는 추론 크레딧
@@ -6334,6 +6369,10 @@ input, textarea{ font:inherit; }
   if (!HF_MODELS.some(function (m) { return m.id === hfModel; })) hfModel = HF_MODELS[0].id;
 
   function aiOn() { return !!(hfKey && hfKey.length > 12); }
+
+  // 한 번도 고른 적이 없다면, 토큰이 있을 때 인식이 훨씬 나은 클라우드를 기본으로 잡는다.
+  // 직접 고른 적이 있으면 그 선택을 그대로 둔다.
+  if (sttMode === null) sttMode = aiOn() ? 'cloud' : 'local';
   function aiModelLabel() {
     var m = HF_MODELS.filter(function (x) { return x.id === hfModel; })[0];
     return m ? m.label : hfModel;
@@ -6474,60 +6513,158 @@ input, textarea{ font:inherit; }
    * @param {string} transcript 받아쓴 답변
    * @param {object} extra      { metrics, durSec, myAnswer }
    */
+  /* ---------- 같은 질문을 다시 답했을 때 견주기 ---------- */
+  function aiHistOf(q) {
+    var h = load(K.aihist, null) || {};
+    return h[q] || [];
+  }
+
+  function aiHistPush(q, score) {
+    var h = load(K.aihist, null) || {};
+    var list = h[q] || [];
+    list.push({ at: Date.now(), score: score });
+    if (list.length > 8) list = list.slice(-8);
+    h[q] = list;
+    save(K.aihist, h);
+  }
+
+  /** 측정값을 사람이 읽는 말로 바꾼다. 숫자만 던지면 AI도 해석을 지어낸다. */
+  function metricLines(m, durSec) {
+    if (!m) return [];
+    var out = [];
+    var say = function (label, val, lo, hi, unit) {
+      if (val == null) return;
+      var judge = val < lo ? '느림/좁음' : (val > hi ? '빠름/넓음' : '적정');
+      out.push(label + ' ' + val + unit + ' (적정 ' + lo + '~' + hi + unit + ' → ' + judge + ')');
+    };
+    if (durSec) out.push('답변 길이 ' + Math.round(durSec) + '초 (면접 권장 40~60초)');
+    say('말 속도', +m.syllableRate.toFixed(1), 4.2, 6.3, '음절/초');
+    if (m.speechRatio != null) {
+      out.push('실제로 말한 비율 ' + Math.round(m.speechRatio * 100) + '% ' +
+               '(80% 이상이면 끊김 없이 이어진 것)');
+    }
+    if (m.longestSilSec != null) {
+      out.push('가장 긴 침묵 ' + m.longestSilSec.toFixed(1) + '초 ' +
+               (m.longestSilSec > 2 ? '(말문이 막힌 구간이 있었다)' : '(무난)'));
+    }
+    say('음높이 폭', +(m.f0RangeSemitone || 0).toFixed(1), 3.5, 9.5, '반음');
+    if (m.loudnessCV != null) {
+      out.push('성량 기복 ' + m.loudnessCV.toFixed(2) +
+               ' (0.32~0.90 이 적정, 낮으면 단조롭고 높으면 들쭉날쭉)');
+    }
+    return out;
+  }
+
+  /**
+   * 답변 한 건을 첨삭한다.
+   * @param {object} item       질문 객체
+   * @param {string} transcript 받아쓴 답변
+   * @param {object} extra      { metrics, durSec, myAnswer, fresh }
+   */
   function aiCoach(item, transcript, extra) {
     extra = extra || {};
-    var sig = aiHash(hfModel + '|' + item.q + '|' + transcript);
+    var sig = aiHash(hfModel + '|v2|' + item.q + '|' + transcript);
     var cached = aiCacheGet(sig);
     if (cached && !extra.fresh) return Promise.resolve(cached);
 
     var lines = [];
     lines.push('[면접 질문] ' + item.q);
     lines.push('[질문 유형] ' + ((item.d && item.d.typeName) || item.t || '일반'));
-    if (item.g) lines.push('[이 유형에서 보는 것] ' + item.g);
-    if (extra.durSec) lines.push('[답변 길이] ' + Math.round(extra.durSec) + '초');
-
-    var m = extra.metrics;
-    if (m) {
-      var bits = [];
-      if (m.syllableRate) bits.push('말 속도 초당 ' + m.syllableRate.toFixed(1) + '음절(권장 4.2~6.3)');
-      if (m.speechRatio != null) bits.push('발화 비율 ' + Math.round(m.speechRatio * 100) + '%');
-      if (m.longestSilSec != null) bits.push('가장 긴 침묵 ' + m.longestSilSec.toFixed(1) + '초');
-      if (m.f0RangeSemitone != null) bits.push('음높이 폭 ' + m.f0RangeSemitone.toFixed(1) + '반음(권장 3.5~9.5)');
-      if (bits.length) lines.push('[음성 측정값] ' + bits.join(' · '));
+    if (item.g) lines.push('[이 유형에서 면접관이 보는 것] ' + item.g);
+    if (item.r && item.r.k && item.r.k.length) {
+      lines.push('[이 질문에서 기대되는 핵심어] ' + item.r.k.slice(0, 8).join(', '));
     }
-    if (extra.myAnswer) lines.push('[지원자가 미리 준비해 둔 답변] ' + extra.myAnswer);
+
+    // 규칙 기반 분석이 이미 잡아낸 사실을 넘겨준다.
+    // AI가 세는 것보다 정확하고, 그만큼 지적이 구체적으로 나온다.
+    var c = analyzeContent(transcript, item);
+    if (c) {
+      var facts = [];
+      facts.push('글자 수 ' + c.chars + ' · 어절 ' + c.words);
+      if (c.miss && c.miss.length) facts.push('언급되지 않은 핵심어: ' + c.miss.slice(0, 6).join(', '));
+      if (c.fillerCount) {
+        facts.push('군더더기 ' + c.fillerCount + '회 (전체의 ' + Math.round(c.fillerRatio * 100) + '%)');
+      }
+      if (c.repeated) facts.push('"' + c.repeated + '" 를 ' + c.repeatedCount + '번 반복');
+      var unmet = (c.needs || []).filter(function (n) { return !n.ok; })
+        .map(function (n) { return n.label; });
+      if (unmet.length) facts.push('빠진 요소: ' + unmet.join(', '));
+      lines.push('[기계가 센 사실] ' + facts.join(' · '));
+    }
+
+    var ml = metricLines(extra.metrics, extra.durSec);
+    if (ml.length) {
+      lines.push('[음성 측정값 — 목소리 평가의 근거로 쓸 것]');
+      ml.forEach(function (t) { lines.push('  - ' + t); });
+    }
+
+    if (extra.myAnswer) {
+      lines.push('[지원자가 미리 준비해 둔 답변]');
+      lines.push(extra.myAnswer);
+    }
+
+    var hist = aiHistOf(item.q);
+    if (hist.length) {
+      lines.push('[이 질문에 대한 지난 점수] ' +
+        hist.slice(-3).map(function (h) { return h.score + '점'; }).join(' → ') +
+        ' — 나아졌는지 총평에서 짚어 줄 것');
+    }
+
     lines.push('');
     lines.push('[실제로 말한 답변]');
     lines.push(transcript);
     lines.push('');
-    lines.push('아래 JSON 형식 그대로 채워라.');
+    lines.push('아래 JSON 형식 그대로 채워라. 값은 모두 한국어.');
     lines.push('{');
-    lines.push('  "score": 0~100 정수 (실제 면접이라면 몇 점인가),');
-    lines.push('  "onTopic": true 또는 false (질문에 맞는 답을 했는가),');
-    lines.push('  "verdict": "한 문장 총평. 지원자가 쓴 표현을 하나 인용할 것",');
+    lines.push('  "score": 0~100 정수 — 실제 면접이라면 몇 점인가,');
+    lines.push('  "axes": {');
+    lines.push('    "content": 0~100 — 질문에 맞는 내용인가,');
+    lines.push('    "structure": 0~100 — 두괄식인가, 순서가 잡혀 있는가,');
+    lines.push('    "detail": 0~100 — 숫자·고유명사·장면이 있는가,');
+    lines.push('    "delivery": 0~100 — 측정값 기준 전달이 안정적인가');
+    lines.push('  },');
+    lines.push('  "onTopic": true 또는 false,');
+    lines.push('  "verdict": "두 문장 총평. 지원자가 실제로 쓴 표현을 반드시 인용할 것",');
     lines.push('  "good": ["실제로 잘한 점 1~2개. 답변의 어느 대목인지 밝힐 것"],');
-    lines.push('  "fix": [{"problem":"이 답변의 구체적 문제", "how":"어떻게 바꿔 말할지, 예시 문장까지"}],');
+    lines.push('  "fix": [{"problem":"이 답변의 구체적 문제", "how":"어떻게 바꿔 말할지 — 바꾼 문장을 통째로 써 줄 것"}],');
+    lines.push('  "voice": [{"problem":"측정값이 말해 주는 전달 문제", "how":"연습 방법을 동작 단위로"}],');
     lines.push('  "missing": ["이 질문에서 기대하는데 답변에 없던 것. 없으면 빈 배열"],');
-    lines.push('  "rewrite": "지원자의 소재를 그대로 살려 다시 쓴 40초 분량 답변. 실제로 소리내어 읽을 수 있는 완성된 문장으로."');
+    lines.push('  "followups": ["이 답변을 들은 면접관이 이어서 던질 꼬리질문 2개"],');
+    lines.push('  "rewrite": "지원자의 소재를 그대로 살려 다시 쓴 45초 분량 답변. 새 경험을 지어내지 말 것. 소리내어 읽을 수 있는 완성된 문장으로."');
     lines.push('}');
-    lines.push('fix 는 1~3개, 가장 점수를 깎는 것부터.');
+    lines.push('');
+    lines.push('fix 는 1~3개, 가장 점수를 깎는 것부터. voice 는 0~2개이며');
+    lines.push('측정값이 모두 적정 범위면 빈 배열로 두어라. 억지로 지적하지 마라.');
 
-    return aiJSON(AI_SYS, lines.join('\n'), { max: 1100, temp: 0.5 })
+    return aiJSON(AI_SYS, lines.join('\n'), { max: 2200, temp: 0.5 })
       .then(function (j) {
+        var num = function (v) { return Math.max(0, Math.min(100, Math.round(Number(v) || 0))); };
+        var pairs = function (arr, n) {
+          return (arr || []).map(function (f) {
+            if (typeof f === 'string') return { problem: f, how: '' };
+            return { problem: String(f.problem || ''), how: String(f.how || '') };
+          }).filter(function (f) { return f.problem; }).slice(0, n);
+        };
+        var ax = j.axes || {};
         var out = {
-          score: Math.max(0, Math.min(100, Math.round(Number(j.score) || 0))),
+          score: num(j.score),
+          axes: {
+            content: num(ax.content), structure: num(ax.structure),
+            detail: num(ax.detail), delivery: num(ax.delivery)
+          },
           onTopic: j.onTopic !== false,
           verdict: String(j.verdict || '').trim(),
           good: (j.good || []).map(String).filter(Boolean).slice(0, 3),
-          fix: (j.fix || []).map(function (f) {
-            if (typeof f === 'string') return { problem: f, how: '' };
-            return { problem: String(f.problem || ''), how: String(f.how || '') };
-          }).filter(function (f) { return f.problem; }).slice(0, 3),
+          fix: pairs(j.fix, 3),
+          voice: pairs(j.voice, 2),
           missing: (j.missing || []).map(String).filter(Boolean).slice(0, 4),
+          followups: (j.followups || []).map(String).filter(Boolean).slice(0, 3),
           rewrite: String(j.rewrite || '').trim(),
+          prev: aiHistOf(item.q).slice(-1)[0] || null,
           model: aiModelLabel(),
           at: Date.now()
         };
+        aiHistPush(item.q, out.score);
         aiCacheSet(sig, out);
         return out;
       });
@@ -6613,7 +6750,36 @@ input, textarea{ font:inherit; }
     sc.appendChild(aiEl('small', null, '점'));
     top.appendChild(sc);
     top.appendChild(aiEl('div', 'aicard__verdict', res.verdict));
+
+    // 같은 질문을 다시 답했으면 지난 점수와의 차이를 보여 준다
+    if (res.prev && typeof res.prev.score === 'number') {
+      var d = res.score - res.prev.score;
+      var chip = aiEl('div', 'aicard__delta' + (d > 0 ? ' is-up' : (d < 0 ? ' is-down' : '')),
+                      (d > 0 ? '▲ ' : (d < 0 ? '▼ ' : '= ')) + Math.abs(d));
+      chip.title = '지난번 ' + res.prev.score + '점';
+      top.appendChild(chip);
+    }
     box.appendChild(top);
+
+    // 어디가 약한지 한눈에
+    var ax = res.axes;
+    if (ax && (ax.content || ax.structure || ax.detail || ax.delivery)) {
+      var grid = aiEl('div', 'aiaxes');
+      [['내용', ax.content], ['구성', ax.structure],
+       ['구체성', ax.detail], ['전달', ax.delivery]].forEach(function (pair) {
+        var cell = aiEl('div', 'aiax');
+        var t = aiEl('div', 'aiax__top');
+        t.appendChild(aiEl('span', null, pair[0]));
+        t.appendChild(aiEl('b', null, String(pair[1])));
+        var track = aiEl('div', 'aiax__track');
+        var bar = aiEl('div', 'aiax__bar' + (pair[1] < 50 ? ' is-low' : (pair[1] < 70 ? ' is-mid' : '')));
+        track.appendChild(bar);
+        cell.appendChild(t); cell.appendChild(track);
+        grid.appendChild(cell);
+        setTimeout(function () { bar.style.width = pair[1] + '%'; }, 40);
+      });
+      box.appendChild(grid);
+    }
 
     var sec = function (title, items, build) {
       if (!items || !items.length) return;
@@ -6632,7 +6798,20 @@ input, textarea{ font:inherit; }
       return li;
     });
 
+    sec('목소리·전달', res.voice, function (f) {
+      var li = aiEl('li');
+      li.appendChild(aiEl('b', null, f.problem));
+      if (f.how) li.appendChild(document.createTextNode(f.how));
+      return li;
+    });
+
     sec('빠진 것', res.missing, function (t) { return aiEl('li', null, t); });
+
+    sec('이어질 꼬리질문', res.followups, function (t) {
+      var li = aiEl('li', 'ask');
+      li.appendChild(document.createTextNode(' ' + t));
+      return li;
+    });
 
     if (res.rewrite) {
       box.appendChild(aiEl('div', 'aicard__sec', '이렇게 다시 말해 보세요'));
@@ -7162,10 +7341,10 @@ input, textarea{ font:inherit; }
     return aiStat.calls + '회 · ' + (aiStat.usd < 0.001 ? '$0.001 미만' : '$' + aiStat.usd.toFixed(3));
   }
 
-  /** 첨삭 한 번에 드는 값. 대략 입력 700 · 출력 600 토큰이다. */
+  /** 첨삭 한 번에 드는 값. 대략 입력 1200 · 출력 1200 토큰이다. */
   function aiCostPerRun() {
     var pr = hfPriceOf(hfModel);
-    var per = (700 * pr.i + 600 * pr.o) / 1000000;
+    var per = (1200 * pr.i + 1200 * pr.o) / 1000000;
     // 클라우드 받아쓰기를 쓰면 1분짜리 답변 값이 함께 든다
     if (cloudSttOn()) per += 60 * STT_USD_PER_SEC;
     return per;
