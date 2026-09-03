@@ -457,6 +457,19 @@ input, textarea{ font:inherit; }
   white-space:pre-wrap;
 }
 
+/* 외워서 말하기 연습: 답변을 흐려 두고, 막힐 때만 눌러서 본다 */
+.veilbtn{
+  margin-left:auto; padding:3px 9px; border-radius:99px;
+  border:1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  font-size:10.5px; font-weight:700; letter-spacing:.04em; color:var(--green);
+}
+.veilbtn[aria-pressed="true"]{ background:var(--green); color:#07130D; }
+#ansCard.is-veiled .tipcard__body{
+  filter:blur(7px); user-select:none; cursor:pointer;
+  transition:filter .18s ease;
+}
+#ansCard.is-veiled .tipcard__body:active{ filter:blur(0); }
+
 /* 내가 적어 둔 답변 — 모범 답안(호박색)과 구분되게 초록 계열로 */
 .tipcard--ans{
   border-color:color-mix(in srgb, var(--green) 30%, transparent);
@@ -1552,6 +1565,14 @@ input, textarea{ font:inherit; }
         <button class="chip" data-sec="90">1분 30초</button>
         <button class="chip" data-sec="120">2분</button>
       </div>
+
+      <div class="prefs__row prefs__row--stack" style="margin-top:6px">
+        <span class="prefs__col">
+          <span class="prefs__label" style="color:var(--paper);font-size:14px">시간 되면 끊기</span>
+          <span class="prefs__note">실제 면접관처럼 시간이 끝나면 녹음을 멈추고 바로 분석합니다</span>
+        </span>
+        <button class="switch" id="swCutoff" aria-pressed="false" aria-label="시간이 끝나면 녹음 자동 종료"></button>
+      </div>
     </div>
 
     <div class="prefs__row prefs__row--stack">
@@ -1749,6 +1770,7 @@ input, textarea{ font:inherit; }
       <div class="tipcard__head">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 6.5l3 3"/></svg>
         내가 적어 둔 답변
+        <button class="veilbtn" id="btnVeil" aria-pressed="false">가리기</button>
       </div>
       <p class="tipcard__body" id="ansBody"></p>
     </div>
@@ -2709,7 +2731,8 @@ input, textarea{ font:inherit; }
     aibudget: 'ccq.aibudget.v1',   // 쓸 수 있는 크레딧 (달러)
     aihist:   'ccq.aihist.v1',     // 질문별 점수 이력
     myans:    'ccq.myans.v1',      // 기출 질문에 적어 둔 내 답변
-    weak:     'ccq.weak.v1'        // 약한 질문 먼저 뽑기
+    weak:     'ccq.weak.v1',       // 약한 질문 먼저 뽑기
+    cutoff:   'ccq.cutoff.v1'      // 시간이 다 되면 녹음을 끊는다
   };
 
   function load(key, fallback) {
@@ -2734,6 +2757,7 @@ input, textarea{ font:inherit; }
   var status   = load(K.status, null);      // { 질문: 'done' | 'fail' }
   var onlyTodo = load(K.onlyTodo, false);   // 아직 답변 안 한 것만 뽑기
   var weakFirst = load(K.weak, false) === true;
+  var cutoff = load(K.cutoff, false) === true;
   /* 분석은 한 흐름으로만 돈다:
        녹음 → 파일 저장 → 기기 안에서 받아쓰기 → 내용·목소리 분석
      실시간 받아쓰기는 녹음과 마이크를 두고 다투므로 쓰지 않는다. */
@@ -3041,6 +3065,7 @@ input, textarea{ font:inherit; }
     $('btnManageLabel').textContent = custom.length ? '목록 ' + custom.length : '추가';
     $('swUnanswered').setAttribute('aria-pressed', String(onlyTodo));
     $('swWeak').setAttribute('aria-pressed', String(weakFirst));
+    $('swCutoff').setAttribute('aria-pressed', String(cutoff));
 
     document.querySelectorAll('#chipsTime .chip').forEach(function (c) {
       c.setAttribute('aria-pressed', String(Number(c.dataset.sec) === sec));
@@ -3457,8 +3482,14 @@ input, textarea{ font:inherit; }
       $('timerLabel').textContent = fmtClock(Math.max(0, left / 1000));
       if (left <= 0) {
         stopTimer(true);
-        toast('시간 종료!');
         buzz([40, 60, 40]);
+        // 면접관은 기다려 주지 않는다. 켜 두었으면 여기서 답변이 끝난 것으로 본다.
+        if (cutoff && rec && rec.isActive()) {
+          toast('시간 종료 — 여기까지 답변으로 분석합니다');
+          stopRec();
+        } else {
+          toast('시간 종료!');
+        }
         return;
       }
       timerId = requestAnimationFrame(frame);
@@ -3488,12 +3519,25 @@ input, textarea{ font:inherit; }
 
   function showMyAnswer() {
     if (!hasMyAnswer()) return false;
+    $('btnVeil').setAttribute('aria-pressed', 'false');
+    $('btnVeil').textContent = '가리기';
+    $('ansCard').classList.remove('is-veiled');
     $('ansBody').textContent = current.a;
     $('ansCard').hidden = false;
     return true;
   }
 
   function hideMyAnswer() { $('ansCard').hidden = true; }
+
+  // 가리기: 흐려진 채로 말해 보고, 막히면 꾹 눌러 잠깐 본다.
+  // 다음 질문에서는 다시 보이게 돌린다 — 매번 켜야 하는 편이 실수를 막는다.
+  $('btnVeil').addEventListener('click', function () {
+    var on = this.getAttribute('aria-pressed') !== 'true';
+    this.setAttribute('aria-pressed', String(on));
+    this.textContent = on ? '보이기' : '가리기';
+    $('ansCard').classList.toggle('is-veiled', on);
+    buzz(8);
+  });
 
   /* ---------- 답변 가이드 ---------- */
   function closeTip() {
@@ -4450,7 +4494,9 @@ input, textarea{ font:inherit; }
     rec.start().then(function () {
       syncRecBtn(true);
       buzz(20);
-      toast('녹음 중 — 정지하면 바로 분석합니다');
+      if (cutoff && !timerId) startTimer();
+      toast(cutoff ? '녹음 중 — ' + fmtClock(sec) + ' 뒤에 자동으로 끝납니다'
+                   : '녹음 중 — 정지하면 바로 분석합니다');
     }).catch(function (e) {
       if (recStt) { recStt.stop(); recStt = null; }
       rec = null;
@@ -4811,6 +4857,15 @@ input, textarea{ font:inherit; }
     } else if (m.f0RangeSemitone > 0) {
       push('good', '억양이 자연스럽습니다',
         '변화 폭 ' + m.f0RangeSemitone.toFixed(1) + '반음. 듣기 좋은 범위입니다.');
+    }
+
+    if (m.tailJudged >= 3 && m.tailFade >= 0.5) {
+      push('bad', '말끝이 흐려집니다',
+        '문장 ' + m.tailJudged + '개 중 ' + Math.round(m.tailFade * m.tailJudged) + '개에서 끝소리가 절반 이하로 죽었습니다. ' +
+        '"~습니다"의 "다"까지 같은 크기로 밀어 주세요. 문장 끝에서 숨을 남겨 두면 됩니다.');
+    } else if (m.tailJudged >= 3 && m.tailFade <= 0.2) {
+      push('good', '문장 끝까지 힘이 유지됩니다',
+        '"~습니다"가 또렷하게 끝납니다. 자신감 있게 들리는 가장 큰 요인입니다.');
     }
 
     if (m.loudness < 0.022) {
@@ -5754,9 +5809,38 @@ input, textarea{ font:inherit; }
       if (p10 > 0) semitoneRange = 12 * Math.log2(p90 / p10);
     }
 
+    // 발화 덩어리(침묵 350ms 이상으로 나뉨)마다 끝부분이 얼마나 죽는지 본다
+    var segs = [], cur = null, gap = 0;
+    for (var q = 0; q < n; q++) {
+      if (frames[q].rms >= thr) {
+        if (!cur) cur = { from: q, to: q };
+        cur.to = q; gap = 0;
+      } else if (cur) {
+        gap += frameMs;
+        if (gap >= 350) { segs.push(cur); cur = null; gap = 0; }
+      }
+    }
+    if (cur) segs.push(cur);
+    var tailN = Math.max(2, Math.round(300 / frameMs));
+    var faded = 0, judged = 0;
+    segs.forEach(function (sg) {
+      var len = sg.to - sg.from + 1;
+      if (len < tailN * 3) return;               // 너무 짧은 덩어리는 판단하지 않는다
+      var body = 0, tail = 0;
+      for (var k = sg.from; k <= sg.to; k++) {
+        if (k > sg.to - tailN) tail += frames[k].rms; else body += frames[k].rms;
+      }
+      body /= (len - tailN); tail /= tailN;
+      judged++;
+      if (body > 0 && tail / body < 0.5) faded++;
+    });
+    var tailFade = judged ? faded / judged : 0;
+
     var speechSec = (speechFrames * frameMs) / 1000;
     return {
       durationSec:  durMs / 1000,
+      tailFade:     tailFade,          // 말끝이 흐려진 문장의 비율 (0~1)
+      tailJudged:   judged,
       speechSec:    speechSec,
       speechRatio:  speechFrames / n,
       longestSilSec: longestSil / 1000,
@@ -6464,6 +6548,9 @@ input, textarea{ font:inherit; }
 
   var FILLERS = ['음', '어', '그', '뭐', '좀', '막', '약간', '뭔가', '이제', '인제', '아'];
 
+  // 확신을 깎는 말끝. "~것 같습니다"는 한국어 면접에서 가장 흔한 감점 습관이다.
+  var HEDGE_RE = /(것\s*같|거\s*같|인\s*듯|아마|어느\s*정도|나름대로|일단은?|약간은?)/g;
+
   /** 마지막 글자의 받침 유무로 조사를 고른다. 한글이 아니면 받침 없는 쪽. */
   function josa(word, withBatchim, without) {
     var ch = word.charCodeAt(word.length - 1);
@@ -6719,6 +6806,10 @@ input, textarea{ font:inherit; }
       out.push('성량 기복 ' + m.loudnessCV.toFixed(2) +
                ' (0.32~0.90 이 적정, 낮으면 단조롭고 높으면 들쭉날쭉)');
     }
+    if (m.tailJudged >= 3) {
+      out.push('말끝 흐림 ' + Math.round(m.tailFade * 100) + '% 의 문장에서 끝소리가 죽음 ' +
+               (m.tailFade >= 0.5 ? '(자신 없게 들리는 주된 원인)' : '(무난)'));
+    }
     return out;
   }
 
@@ -6753,6 +6844,7 @@ input, textarea{ font:inherit; }
         facts.push('군더더기 ' + c.fillerCount + '회 (전체의 ' + Math.round(c.fillerRatio * 100) + '%)');
       }
       if (c.repeated) facts.push('"' + c.repeated + '" 를 ' + c.repeatedCount + '번 반복');
+      if (c.hedges) facts.push('"~것 같다" 류 자신 없는 말끝 ' + c.hedges + '회');
       var unmet = (c.needs || []).filter(function (n) { return !n.ok; })
         .map(function (n) { return n.label; });
       if (unmet.length) facts.push('빠진 요소: ' + unmet.join(', '));
@@ -6766,9 +6858,12 @@ input, textarea{ font:inherit; }
     }
 
     if (extra.myAnswer) {
-      lines.push('[지원자가 미리 준비해 둔 답변]');
+      lines.push('[지원자가 미리 준비해 둔 답변 — 실제 발화와 어디가 달라졌는지 반드시 대조할 것]');
       lines.push(extra.myAnswer);
     }
+
+    // 영어 질문은 다시 쓴 답변도 영어여야 한다. 평가 자체는 한국어로 받는다.
+    var isEn = item.t === '영어' || /^[A-Za-z][^가-힣]*$/.test(item.q);
 
     var hist = aiHistOf(item.q);
     if (hist.length) {
@@ -6796,8 +6891,16 @@ input, textarea{ font:inherit; }
     lines.push('  "fix": [{"problem":"이 답변의 구체적 문제", "how":"어떻게 바꿔 말할지 — 바꾼 문장을 통째로 써 줄 것"}],');
     lines.push('  "voice": [{"problem":"측정값이 말해 주는 전달 문제", "how":"연습 방법을 동작 단위로"}],');
     lines.push('  "missing": ["이 질문에서 기대하는데 답변에 없던 것. 없으면 빈 배열"],');
-    lines.push('  "followups": ["이 답변을 들은 면접관이 이어서 던질 꼬리질문 2개"],');
-    lines.push('  "rewrite": "지원자의 소재를 그대로 살려 다시 쓴 45초 분량 답변. 새 경험을 지어내지 말 것. 소리내어 읽을 수 있는 완성된 문장으로."');
+    lines.push('  "followups": ["이 답변을 들은 면접관이 이어서 던질 꼬리질문 2개' + (isEn ? ' (영어로)' : '') + '"],');
+    if (extra.myAnswer) {
+      lines.push('  "drift": {');
+      lines.push('    "dropped": ["준비한 답변에는 있었는데 실제로는 빠진 내용. 없으면 빈 배열"],');
+      lines.push('    "changed": ["준비와 다르게 말해서 약해진 대목. 없으면 빈 배열"],');
+      lines.push('    "verdict": "준비한 대로 나왔는지 한 문장"');
+      lines.push('  },');
+    }
+    lines.push('  "rewrite": "지원자의 소재를 그대로 살려 다시 쓴 45초 분량 답변. 새 경험을 지어내지 말 것. 소리내어 읽을 수 있는 완성된 문장으로.' +
+               (isEn ? ' 질문이 영어이므로 이 항목만 영어로 쓸 것.' : '') + '"');
     lines.push('}');
     lines.push('');
     lines.push('fix 는 1~3개, 가장 점수를 깎는 것부터. voice 는 0~2개이며');
@@ -6826,6 +6929,11 @@ input, textarea{ font:inherit; }
           voice: pairs(j.voice, 2),
           missing: (j.missing || []).map(String).filter(Boolean).slice(0, 4),
           followups: (j.followups || []).map(String).filter(Boolean).slice(0, 3),
+          drift: j.drift ? {
+            dropped: (j.drift.dropped || []).map(String).filter(Boolean).slice(0, 4),
+            changed: (j.drift.changed || []).map(String).filter(Boolean).slice(0, 3),
+            verdict: String(j.drift.verdict || '').trim()
+          } : null,
           rewrite: String(j.rewrite || '').trim(),
           prev: aiHistOf(item.q).slice(-1)[0] || null,
           q: item.q,
@@ -6958,6 +7066,19 @@ input, textarea{ font:inherit; }
     };
 
     sec('잘한 점', res.good, function (t) { return aiEl('li', null, t); });
+
+    if (res.drift && (res.drift.dropped.length || res.drift.changed.length || res.drift.verdict)) {
+      box.appendChild(aiEl('div', 'aicard__sec', '준비한 답변과 견주면'));
+      if (res.drift.verdict) box.appendChild(aiEl('div', 'aicard__rw', res.drift.verdict));
+      var dul = document.createElement('ul');
+      res.drift.dropped.forEach(function (t) {
+        var li = aiEl('li'); li.appendChild(aiEl('b', null, '빠뜨림')); li.appendChild(document.createTextNode(t)); dul.appendChild(li);
+      });
+      res.drift.changed.forEach(function (t) {
+        var li = aiEl('li'); li.appendChild(aiEl('b', null, '달라짐')); li.appendChild(document.createTextNode(t)); dul.appendChild(li);
+      });
+      if (dul.children.length) box.appendChild(dul);
+    }
 
     sec('고칠 점', res.fix, function (f) {
       var li = aiEl('li');
@@ -7148,10 +7269,13 @@ input, textarea{ font:inherit; }
       if (freq[w] >= 4 && (!repeated || freq[w] > freq[repeated])) repeated = w;
     });
 
+    var hedges = (transcript.match(HEDGE_RE) || []).length;
+
     return {
       transcript: transcript,
       chars: flat.length,
       words: tokens.length,
+      hedges: hedges,
       topicScore: topicScore,
       hit: hit, miss: miss,
       needs: needs,
@@ -7200,6 +7324,13 @@ input, textarea{ font:inherit; }
     if (c.fillerRatio > 0.12 && c.fillerCount >= 4) {
       push('warn', '군더더기 표현이 많습니다',
         '"음", "어", "그" 같은 말이 ' + c.fillerCount + '번 나왔습니다. 말이 막힐 때는 소리를 내지 말고 잠깐 멈추는 편이 훨씬 안정돼 보입니다.');
+    }
+
+    // 자신 없는 말끝
+    if (c.hedges >= 3) {
+      push('warn', '"~것 같습니다"가 잦습니다',
+        '확신을 깎는 표현이 ' + c.hedges + '번 나왔습니다. 자기 경험은 추측이 아니니 "~했습니다", "~입니다"로 끊으세요. ' +
+        '"저는 꼼꼼한 것 같습니다" → "저는 꼼꼼합니다".');
     }
 
     // 반복
@@ -7524,6 +7655,14 @@ input, textarea{ font:inherit; }
     toast(n + '개 표시를 모두 해제했어요');
   });
 
+  $('swCutoff').addEventListener('click', function () {
+    cutoff = !cutoff;
+    save(K.cutoff, cutoff);
+    render();
+    buzz(10);
+    toast(cutoff ? '시간이 끝나면 녹음을 멈추고 분석합니다' : '시간이 끝나도 녹음은 이어집니다');
+  });
+
   $('swWeak').addEventListener('click', function () {
     weakFirst = !weakFirst;
     save(K.weak, weakFirst);
@@ -7728,6 +7867,8 @@ input, textarea{ font:inherit; }
     aiGuide: aiGuide,
     showAnswerReport: showAnswerReport,
     peek: function () { return { q: current && current.q, a: current && current.a, my: current ? myAnswerFor(current.q) : null }; },
+    setCurrent: function (item) { current = item; },
+    timerLeft: function () { return timerEnd - Date.now(); },
     cloudTranscribe: cloudTranscribe,
     wavFromPcm: wavFromPcm,
     enqueueTranscribe: enqueueTranscribe,
